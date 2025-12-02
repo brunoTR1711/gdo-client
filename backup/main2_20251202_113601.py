@@ -97,7 +97,6 @@ SKILLS = [
     {"name": "Reflexo", "attr": "AGI", "cat": "FISICA", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Atletismo", "attr": "FOR", "cat": "FISICA", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Lutar", "attr": "FOR", "cat": "FISICA", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
-    {"name": "Pontaria", "attr": "AGI", "cat": "FISICA", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Fortitude", "attr": "VIG", "cat": "FISICA", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Pilotagem*", "attr": "AGI", "cat": "FISICA", "requires_training": True, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Crime*", "attr": "AGI", "cat": "FISICA", "requires_training": True, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
@@ -134,7 +133,6 @@ DICE_STATE = {
     "pending": None,
     "display_dice": [1, 1, 1],
     "last_anim": 0,
-    "anim_config": {"count": 3, "sides": 6},
 }
 
 UI_STATE = {"hover_attr": None, "hover_skill": None}
@@ -157,7 +155,6 @@ INVENTORY_STATE = {
         "name": "",
         "category": "",
         "space": "",
-        "tipo": "",
         "alcance": "",
         "empunhadura": "",
         "dano": "",
@@ -174,8 +171,6 @@ INVENTORY_STATE = {
     "item_rows": [],
     "view_item_index": None,
     "summary_buttons": {},
-    "editing_index": None,
-    "form_error": "",
 }
 
 def send_note_payload():
@@ -292,8 +287,7 @@ def wrap_text(text, font, max_width):
 
 FORM_DROPDOWN_OPTIONS = {
     "category": ["Armas", "municao", "Protecao", "Magikos", "Coletaveis", "Itens chave", "componentes"],
-    "space": ["0", "1", "2", "3", "4", "5"],
-    "tipo": ["1", "2", "3", "4", "5"],
+    "space": ["1", "2", "3", "4", "5"],
     "alcance": ["---", "1m", "3m", "6m", "9m", "12m"],
     "empunhadura": ["---", "leve", "uma mao", "duas maos"],
     "dano": ["1D4", "1D6", "1D8", "1D10", "1D12", "1D20"],
@@ -316,15 +310,13 @@ def form_backspace(field):
 
 def reset_inventory_form():
     form = INVENTORY_STATE["form"]
-    for key in ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]:
+    for key in ["name", "category", "space", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]:
         form[key] = ""
     form["image_path"] = ""
     form["image_surface"] = None
     form["rects"] = {}
     form["focus"] = None
     INVENTORY_STATE["form_dropdown"] = None
-    INVENTORY_STATE["form_error"] = ""
-    INVENTORY_STATE["editing_index"] = None
 
 
 def select_inventory_image():
@@ -355,7 +347,7 @@ def form_clear_dropdown():
 
 def snapshot_inventory_form():
     form = INVENTORY_STATE["form"]
-    fields = ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]
+    fields = ["name", "category", "space", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]
     data = {}
     for field in fields:
         value = form.get(field, "")
@@ -373,27 +365,7 @@ def add_inventory_item_from_form():
     item = snapshot_inventory_form()
     if not item.get("name"):
         item["name"] = "Item sem nome"
-    space_val = safe_space_value(item.get("space"))
-    tipo_val = safe_type_value(item.get("tipo"))
-    type_idx = tipo_val - 1
-    edit_index = INVENTORY_STATE.get("editing_index")
-    base_weight = calc_inventory_weight(exclude_index=edit_index)
-    limit = get_inventory_weight_limit()
-    if space_val > 0 and base_weight + space_val > limit:
-        INVENTORY_STATE["form_error"] = "Limite de peso atingido"
-        return
-    type_counts = count_items_by_type(exclude_index=edit_index)
-    type_limit = INVENTORY_STATE["limit_values"][type_idx]
-    if type_limit > 0 and type_counts[type_idx] + 1 > type_limit:
-        INVENTORY_STATE["form_error"] = f"Limite do tipo {tipo_val} atingido"
-        return
-    INVENTORY_STATE["form_error"] = ""
-    items = INVENTORY_STATE.setdefault("items", [])
-    if edit_index is not None and 0 <= edit_index < len(items):
-        items[edit_index] = item
-    else:
-        items.append(item)
-    refresh_inventory_totals()
+    INVENTORY_STATE.setdefault("items", []).append(item)
     reset_inventory_form()
     INVENTORY_STATE["show_form"] = False
     INVENTORY_STATE["view_item_index"] = None
@@ -403,20 +375,17 @@ def cancel_inventory_form():
     reset_inventory_form()
     INVENTORY_STATE["show_form"] = False
     INVENTORY_STATE["view_item_index"] = None
-    INVENTORY_STATE["editing_index"] = None
 
 
 def close_inventory_summary():
     INVENTORY_STATE["view_item_index"] = None
     INVENTORY_STATE["summary_buttons"] = {}
-    INVENTORY_STATE["editing_index"] = None
 
 
 def remove_inventory_item(index):
     items = INVENTORY_STATE.setdefault("items", [])
     if 0 <= index < len(items):
         items.pop(index)
-    refresh_inventory_totals()
     close_inventory_summary()
 
 
@@ -426,7 +395,7 @@ def roll_3d6():
 
 
 def build_roll_entry(label, attr_code, attr_value, skill_bonus, roll_type, skill_name=None, trained=False):
-    dice = roll_custom_dice(3, 6)
+    dice = roll_3d6()
     total = sum(dice) + attr_value + skill_bonus
     return {
         "label": label,
@@ -438,7 +407,6 @@ def build_roll_entry(label, attr_code, attr_value, skill_bonus, roll_type, skill
         "trained": trained,
         "dice": dice,
         "total": total,
-        "dice_config": {"count": 3, "sides": 6},
     }
 
 
@@ -481,58 +449,20 @@ def roll_skill(skill):
     start_roll(entry)
 
 
-def roll_item_damage(index):
-    items = INVENTORY_STATE.get("items", [])
-    if index is None or not (0 <= index < len(items)):
-        return
-    item = items[index]
-    dmg_info = parse_damage_die(item.get("dano"))
-    if not dmg_info:
-        return
-    count, sides = dmg_info
-    dice = roll_custom_dice(count, sides)
-    total = sum(dice)
-    entry = {
-        "label": f"{item.get('name', 'Item')} (Dano)",
-        "roll_type": "damage",
-        "skill_name": item.get("name", "Item"),
-        "attr_code": "DMG",
-        "attr_value": 0,
-        "skill_bonus": 0,
-        "trained": False,
-        "dice": dice,
-        "total": total,
-        "dice_config": {"count": count, "sides": sides},
-        "damage_expr": f"{count}D{sides}",
-    }
-    start_roll(entry)
-
-
-def roll_inventory_item_damage(index):
-    roll_item_damage(index)
-
-
 def roll_summary(entry):
     dice_str = "+".join(str(d) for d in entry["dice"])
-    label = entry.get("label", entry["roll_type"].title())
+    parts = [
+        f"3D6({dice_str})",
+        f"{entry['attr_code']}({entry['attr_value']:+})",
+    ]
+    if entry["roll_type"] == "skill":
+        if entry["skill_bonus"]:
+            parts.append(f"Treino({entry['skill_bonus']:+})")
+        else:
+            parts.append("Sem treino")
     total = entry["total"]
-    roll_type = entry.get("roll_type")
-    if roll_type in ("attribute", "skill"):
-        parts = [
-            f"3D6({dice_str})",
-            f"{entry['attr_code']}({entry['attr_value']:+})",
-        ]
-        if roll_type == "skill":
-            if entry["skill_bonus"]:
-                parts.append(f"Treino({entry['skill_bonus']:+})")
-            else:
-                parts.append("Sem treino")
-        return f"{label}: {' + '.join(parts)} = {total}"
-    elif roll_type == "damage":
-        expr = entry.get("damage_expr", "Dano")
-        return f"{label}: {expr}({dice_str}) = {total}"
-    else:
-        return f"{label}: {dice_str} = {total}"
+    label = entry.get("label", entry["roll_type"].title())
+    return f"{label}: {' + '.join(parts)} = {total}"
 
 
 def start_roll(entry):
@@ -542,9 +472,7 @@ def start_roll(entry):
     DICE_STATE["rolling"] = True
     DICE_STATE["roll_start"] = now
     DICE_STATE["last_anim"] = now
-    config = entry.get("dice_config") or {"count": 3, "sides": 6}
-    DICE_STATE["anim_config"] = config
-    DICE_STATE["display_dice"] = roll_custom_dice(config.get("count", 3), config.get("sides", 6))
+    DICE_STATE["display_dice"] = roll_3d6()
 
 
 def update_dice_roll():
@@ -554,8 +482,7 @@ def update_dice_roll():
     now = pygame.time.get_ticks()
     # Gira os dados rapidamente enquanto rola
     if now - DICE_STATE["last_anim"] > 80:
-        config = DICE_STATE.get("anim_config") or {"count": 3, "sides": 6}
-        DICE_STATE["display_dice"] = roll_custom_dice(config.get("count", 3), config.get("sides", 6))
+        DICE_STATE["display_dice"] = roll_3d6()
         DICE_STATE["last_anim"] = now
     # Finaliza após 1s
     if now - DICE_STATE["roll_start"] >= 1000:
@@ -623,82 +550,6 @@ def get_attr_value(code):
         if attr["code"] == code:
             return attr["value"]
     return 0
-
-
-def safe_space_value(value):
-    """Converte valor do campo de espaço para inteiro >= 0."""
-    if value is None:
-        return 0
-    try:
-        val = int(str(value).strip() or 0)
-    except (ValueError, TypeError):
-        return 0
-    return max(0, val)
-
-
-def safe_type_value(value):
-    """Converte valor de tipo para 1-5; padrão 1."""
-    try:
-        val = int(str(value).strip() or 1)
-    except (ValueError, TypeError):
-        return 1
-    return min(5, max(1, val))
-
-
-def get_inventory_weight_limit():
-    bonus = INVENTORY_STATE.get("weight_bonus", 0)
-    base_for = get_attr_value("FOR")
-    extra = 2
-    if base_for >= 6:
-        extra = 9
-    elif base_for >= 5:
-        extra = 7
-    elif base_for >= 4:
-        extra = 4
-    return max(0, base_for + extra + bonus)
-
-
-def calc_inventory_weight(exclude_index=None):
-    total = 0
-    for idx, item in enumerate(INVENTORY_STATE.get("items", [])):
-        if exclude_index is not None and idx == exclude_index:
-            continue
-        total += safe_space_value(item.get("space"))
-    return total
-
-
-def count_items_by_type(exclude_index=None):
-    counts = [0, 0, 0, 0, 0]
-    for idx, item in enumerate(INVENTORY_STATE.get("items", [])):
-        if exclude_index is not None and idx == exclude_index:
-            continue
-        tipo = safe_type_value(item.get("tipo"))
-        counts[tipo - 1] += 1
-    return counts
-
-
-def refresh_inventory_totals():
-    INVENTORY_STATE["total_values"] = count_items_by_type()
-
-
-def roll_custom_dice(count, sides):
-    return [random.randint(1, max(1, sides)) for _ in range(max(1, count))]
-
-
-def parse_damage_die(text):
-    if not text:
-        return None
-    parts = str(text).lower().strip().split("d")
-    if len(parts) != 2:
-        return None
-    try:
-        count = int(parts[0]) if parts[0] else 1
-        sides = int(parts[1])
-    except ValueError:
-        return None
-    count = max(1, count)
-    sides = max(2, sides)
-    return (count, sides)
 
 
 def calc_life_counts(vigor_value):
@@ -1356,13 +1207,12 @@ def draw_inventory_panel(surface):
     is_inventory = current_tab.upper().startswith("INVENT")
 
     if is_inventory:
-        INVENTORY_STATE["total_values"] = count_items_by_type()
         y = draw_boxes("LIMITE DE ITENS", INVENTORY_STATE["limit_values"], y, INVENTORY_STATE["limit_rects"])
         y = draw_boxes("TOTAL NO INVENTARIO", INVENTORY_STATE["total_values"], y, INVENTORY_STATE["total_rects"])
         draw_text(surface, "PESO", FONTS["sm"], WHITE, (panel_x + content_pad, y))
-        max_weight = get_inventory_weight_limit()
-        current_w = calc_inventory_weight()
-        INVENTORY_STATE["current_weight"] = current_w
+        max_weight = get_attr_value("FOR") + 2 + INVENTORY_STATE.get("weight_bonus", 0)
+        max_weight = max(0, max_weight)
+        current_w = INVENTORY_STATE.get("current_weight", 0)
         draw_text(surface, f"{current_w:02d}/{max_weight:02d}", FONTS["sm"], WHITE, (panel_x + 150, y))
 
         form_y = y + 32
@@ -1418,30 +1268,26 @@ def draw_inventory_panel(surface):
             col_w = (col_area - details_gap) // 2
             row_h = 30
             rows = [
-                ("category", "Categoria", 0, 0, False, False),
-                ("space", "Espaco", 0, 1, False, False),
-                ("tipo", "Tipo", 1, 0, False, False),
-                ("alcance", "Alcance", 1, 1, False, False),
-                ("empunhadura", "Empunhadura", 2, 0, False, False),
-                ("dano", "Dano", 2, 1, False, False),
-                ("localizacao", "Localizacao", 3, 0, True, True),
+                ("category", "Categoria", 0, 0, False),
+                ("space", "Espaco", 0, 1, False),
+                ("alcance", "Alcance", 1, 0, False),
+                ("empunhadura", "Empunhadura", 1, 1, False),
+                ("dano", "Dano", 2, 0, False),
+                ("localizacao", "Localizacao", 2, 1, True),
             ]
             base_y = name_rect.bottom + 16
-            details_bottom = base_y
-            for field, label, row_idx, col_idx, is_text, full_width in rows:
-                width = col_w * 2 + details_gap if full_width else col_w
-                x = img_rect.right + 12 if full_width else img_rect.right + 12 + col_idx * (col_w + details_gap)
+            for field, label, row_idx, col_idx, is_text in rows:
+                x = img_rect.right + 12 + col_idx * (col_w + details_gap)
                 y_row = base_y + row_idx * (row_h + 12)
-                rect = pygame.Rect(x, y_row, width, row_h)
+                rect = pygame.Rect(x, y_row, col_w, row_h)
                 if field in FORM_DROPDOWN_OPTIONS and not is_text:
                     draw_form_dropdown(field, rect, label)
                 else:
                     draw_form_text(field, rect, label)
-                details_bottom = max(details_bottom, rect.bottom)
 
             desc_rect = pygame.Rect(
                 form_rect.x + inner_pad,
-                details_bottom + 12,
+                base_y + 3 * (row_h + 12),
                 form_rect.width - inner_pad * 2,
                 150,
             )
@@ -1470,9 +1316,6 @@ def draw_inventory_panel(surface):
             INVENTORY_STATE["form_buttons"] = {"save": save_rect, "cancel": cancel_rect}
             INVENTORY_STATE["summary_buttons"] = {}
             INVENTORY_STATE["view_item_index"] = None
-            error_msg = INVENTORY_STATE.get("form_error")
-            if error_msg:
-                draw_text(surface, error_msg, FONTS["xs"], RED, (form_rect.x + inner_pad, btn_y - 18))
         elif mode == "view":
             INVENTORY_STATE["form"]["rects"] = {}
             INVENTORY_STATE["form_buttons"] = {}
@@ -1499,38 +1342,25 @@ def draw_inventory_panel(surface):
             col_w = (col_area - details_gap) // 2
             row_h = 30
             detail_values = [
-                ("Categoria", item.get("category"), False),
-                ("Espaco", item.get("space"), False),
-                ("Tipo", item.get("tipo"), False),
-                ("Alcance", item.get("alcance"), False),
-                ("Empunhadura", item.get("empunhadura"), False),
-                ("Dano", item.get("dano"), False),
-                ("Localizacao", item.get("localizacao"), True),
+                ("Categoria", item.get("category")),
+                ("Espaco", item.get("space")),
+                ("Alcance", item.get("alcance")),
+                ("Empunhadura", item.get("empunhadura")),
+                ("Dano", item.get("dano")),
+                ("Localizacao", item.get("localizacao")),
             ]
             base_y = name_rect.bottom + 16
-            row_idx = 0
-            col_idx = 0
-            details_bottom = base_y
-            for label, value, full_width in detail_values:
-                width = col_w * 2 + details_gap if full_width else col_w
-                x = img_rect.right + 12 if full_width else img_rect.right + 12 + col_idx * (col_w + details_gap)
+            for idx_field, (label, value) in enumerate(detail_values):
+                col_idx = 0 if idx_field % 2 == 0 else 1
+                row_idx = idx_field // 2
+                x = img_rect.right + 12 + col_idx * (col_w + details_gap)
                 y_row = base_y + row_idx * (row_h + 12)
-                rect = pygame.Rect(x, y_row, width, row_h)
+                rect = pygame.Rect(x, y_row, col_w, row_h)
                 draw_summary_field(rect, label, value)
-                details_bottom = max(details_bottom, rect.bottom)
-                if full_width:
-                    row_idx += 1
-                    col_idx = 0
-                else:
-                    if col_idx == 0:
-                        col_idx = 1
-                    else:
-                        col_idx = 0
-                        row_idx += 1
 
             desc_rect = pygame.Rect(
                 form_rect.x + inner_pad,
-                details_bottom + 12,
+                base_y + 3 * (row_h + 12),
                 form_rect.width - inner_pad * 2,
                 150,
             )
@@ -1547,25 +1377,16 @@ def draw_inventory_panel(surface):
             if btn_y + btn_h + inner_pad > form_rect.bottom:
                 btn_y = form_rect.bottom - inner_pad - btn_h
             btn_gap = 12
-            btn_w = (form_rect.width - inner_pad * 2 - btn_gap * 2) // 3
+            btn_w = (form_rect.width - inner_pad * 2 - btn_gap) // 2
             close_rect = pygame.Rect(form_rect.x + inner_pad, btn_y, btn_w, btn_h)
-            edit_rect = pygame.Rect(close_rect.right + btn_gap, btn_y, btn_w, btn_h)
-            remove_rect = pygame.Rect(edit_rect.right + btn_gap, btn_y, btn_w, btn_h)
+            remove_rect = pygame.Rect(close_rect.right + btn_gap, btn_y, btn_w, btn_h)
             pygame.draw.rect(surface, GRAY_50, close_rect)
             pygame.draw.rect(surface, WHITE, close_rect, 1)
             draw_text(surface, "FECHAR", FONTS["sm"], BLACK, close_rect.center, center=True)
-            pygame.draw.rect(surface, ORANGE, edit_rect)
-            pygame.draw.rect(surface, WHITE, edit_rect, 1)
-            draw_text(surface, "EDITAR", FONTS["sm"], BLACK, edit_rect.center, center=True)
             pygame.draw.rect(surface, RED, remove_rect)
             pygame.draw.rect(surface, WHITE, remove_rect, 1)
             draw_text(surface, "REMOVER", FONTS["sm"], BLACK, remove_rect.center, center=True)
-            INVENTORY_STATE["summary_buttons"] = {
-                "close": close_rect,
-                "edit": edit_rect,
-                "remove": remove_rect,
-                "index": view_index,
-            }
+            INVENTORY_STATE["summary_buttons"] = {"close": close_rect, "remove": remove_rect, "index": view_index}
         else:
             INVENTORY_STATE["form"]["rects"] = {}
             INVENTORY_STATE["form_buttons"] = {}
@@ -1664,25 +1485,12 @@ def draw_inventory_panel(surface):
                     meta_parts.append(item["dano"])
                 if item.get("space"):
                     meta_parts.append(f"Espaco {item['space']}")
-                if item.get("tipo"):
-                    meta_parts.append(f"Tipo {item['tipo']}")
                 meta = " | ".join(meta_parts) if meta_parts else "--"
                 draw_text(surface, meta, FONTS["xs"], GRAY_70, (col_split + 8, y_row + 28))
-                roll_btn_rect = None
                 if item.get("descricao"):
                     desc_preview = item["descricao"].strip().split("\n")[0]
                     draw_text(surface, desc_preview[:80], FONTS["xs"], GRAY_70, (col_split + 8, y_row + 44))
-                dmg_info = parse_damage_die(item.get("dano"))
-                if dmg_info:
-                    btn_w = 64
-                    btn_h = 22
-                    roll_btn_rect = pygame.Rect(row_rect.right - btn_w - 8, y_row + row_h - btn_h - 6, btn_w, btn_h)
-                    pygame.draw.rect(surface, GRAY_50, roll_btn_rect)
-                    pygame.draw.rect(surface, WHITE, roll_btn_rect, 1)
-                    draw_text(surface, "DANO", FONTS["xs"], WHITE, roll_btn_rect.center, center=True)
-                INVENTORY_STATE["item_rows"].append(
-                    {"index": row_index, "row_rect": row_rect, "roll_rect": roll_btn_rect}
-                )
+                INVENTORY_STATE["item_rows"].append((row_index, row_rect))
             y_row += row_h
             row_index += 1
 
@@ -1789,7 +1597,6 @@ def draw_skills_panel(surface):
             y += row_h
 
 
-
 def draw_dice_panel(surface):
     panel_x = 1080
     panel_y = 820
@@ -1798,7 +1605,7 @@ def draw_dice_panel(surface):
     panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
     pygame.draw.rect(surface, BLACK, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
-    draw_text(surface, "ROLAGENS", FONTS["md"], WHITE, (panel_rect.x + 10, panel_rect.y + 6))
+    draw_text(surface, "ROLAGENS 3D6", FONTS["md"], WHITE, (panel_rect.x + 10, panel_rect.y + 6))
 
     left_w = int(panel_w * 0.45)
     current_rect = pygame.Rect(panel_rect.x + 10, panel_rect.y + 30, left_w - 10, panel_rect.height - 40)
@@ -1810,11 +1617,9 @@ def draw_dice_panel(surface):
     rolling = DICE_STATE["rolling"]
     entry = DICE_STATE["pending"] if rolling and DICE_STATE["pending"] else DICE_STATE["current"]
     if not entry:
-        draw_text(surface, "Clique em um atributo, pericia ou botao de dano para rolar dados.", FONTS["xs"], WHITE, (current_rect.x + 8, current_rect.y + 10))
+        draw_text(surface, "Clique em um atributo ou perícia para rolar 3D6.", FONTS["xs"], WHITE, (current_rect.x + 8, current_rect.y + 10))
     else:
-        roll_type = entry.get("roll_type", "").lower()
-        type_label = {"skill": "Pericia", "attribute": "Atributo", "damage": "Dano"}.get(roll_type, roll_type.title() if roll_type else "")
-        title = f"{entry['label']} ({type_label})"
+        title = f"{entry['label']} ({'Perícia' if entry['roll_type']=='skill' else 'Atributo'})"
         draw_text(surface, title, FONTS["sm"], WHITE, (current_rect.x + 8, current_rect.y + 8))
 
         dice_size = 48
@@ -1822,44 +1627,26 @@ def draw_dice_panel(surface):
         dice_start_x = current_rect.x + 10
         dice_y = current_rect.y + 30
         dice_values = DICE_STATE["display_dice"] if rolling else entry["dice"]
-        config = entry.get("dice_config") or {"count": len(dice_values), "sides": 6}
-        max_val = config.get("sides", 6)
-        min_val = 1
         for i, val in enumerate(dice_values):
             drect = pygame.Rect(dice_start_x + i * (dice_size + dice_gap), dice_y, dice_size, dice_size)
             pygame.draw.rect(surface, GRAY_50, drect)
             pygame.draw.rect(surface, WHITE, drect, 1)
-            color = WHITE
-            if not rolling:
-                if val >= max_val:
-                    color = GREEN
-                elif val <= min_val:
-                    color = RED
-            draw_text(surface, str(val), FONTS["lg"], color, drect.center, center=True)
+            draw_text(surface, str(val), FONTS["lg"], WHITE, drect.center, center=True)
 
-        info_bottom = dice_y + dice_size
-        if roll_type in ("attribute", "skill"):
-            bonus_y = dice_y + dice_size + 8
-            attr_rect = pygame.Rect(dice_start_x, bonus_y, 140, 26)
-            pygame.draw.rect(surface, GRAY_50, attr_rect)
-            pygame.draw.rect(surface, WHITE, attr_rect, 1)
-            draw_text(surface, f"Atributo {entry['attr_value']:+}", FONTS["xs"], WHITE, (attr_rect.x + 6, attr_rect.y + 8))
-            draw_text(surface, entry["attr_code"], FONTS["md"], WHITE, (attr_rect.right - 34, attr_rect.y + 4))
-            info_bottom = attr_rect.bottom
-            if roll_type == "skill":
-                skill_rect = pygame.Rect(dice_start_x, attr_rect.bottom + 6, 140, 26)
-                pygame.draw.rect(surface, GRAY_50, skill_rect)
-                pygame.draw.rect(surface, WHITE, skill_rect, 1)
-                skill_label = f"Treino {entry['skill_bonus']:+}" if entry["skill_bonus"] else "Sem treino"
-                draw_text(surface, skill_label, FONTS["xs"], WHITE, (skill_rect.x + 6, skill_rect.y + 8))
-                info_bottom = skill_rect.bottom
-        elif roll_type == "damage":
-            dmg_rect = pygame.Rect(dice_start_x, dice_y + dice_size + 8, 140, 26)
-            pygame.draw.rect(surface, GRAY_50, dmg_rect)
-            pygame.draw.rect(surface, WHITE, dmg_rect, 1)
-            expr = entry.get("damage_expr", f"{config.get('count', 1)}D{config.get('sides', 6)}")
-            draw_text(surface, f"Dado {expr}", FONTS["xs"], WHITE, (dmg_rect.x + 6, dmg_rect.y + 8))
-            info_bottom = dmg_rect.bottom
+        bonus_y = dice_y + dice_size + 8
+        attr_rect = pygame.Rect(dice_start_x, bonus_y, 120, 26)
+        pygame.draw.rect(surface, GRAY_50, attr_rect)
+        pygame.draw.rect(surface, WHITE, attr_rect, 1)
+        draw_text(surface, f"Atributo {entry['attr_value']:+}", FONTS["xs"], WHITE, (attr_rect.x + 6, attr_rect.y + 8))
+        draw_text(surface, entry["attr_code"], FONTS["md"], WHITE, (attr_rect.right - 32, attr_rect.y + 4))
+
+        skill_rect = pygame.Rect(dice_start_x, attr_rect.bottom + 6, 120, 26)
+        pygame.draw.rect(surface, GRAY_50, skill_rect)
+        pygame.draw.rect(surface, WHITE, skill_rect, 1)
+        skill_label = f"Treino {entry['skill_bonus']:+}" if entry["roll_type"] == "skill" else "Sem treino"
+        if entry["roll_type"] == "skill" and not entry["skill_bonus"]:
+            skill_label = "Sem treino"
+        draw_text(surface, skill_label, FONTS["xs"], WHITE, (skill_rect.x + 6, skill_rect.y + 8))
 
         total_rect_w = 120
         total_rect_h = 48
@@ -1871,7 +1658,7 @@ def draw_dice_panel(surface):
         draw_text(surface, total_text, FONTS["lg"], BLACK, (total_rect.centerx, total_rect.y + 24), center=True)
 
         summary = "Rolando..." if rolling else roll_summary(entry)
-        draw_text(surface, summary, FONTS["xs"], WHITE, (dice_start_x, info_bottom + 8))
+        draw_text(surface, summary, FONTS["xs"], WHITE, (dice_start_x, skill_rect.bottom + 8))
 
     # Histórico
     pygame.draw.rect(surface, GRAY_30, history_rect)
@@ -2241,38 +2028,14 @@ def main():
                         elif cancel_rect and cancel_rect.collidepoint(pos_base):
                             cancel_inventory_form()
                             form_handled = True
-                    if (
-                        not INVENTORY_STATE.get("show_form")
-                        and INVENTORY_STATE.get("view_item_index") is not None
-                        and not form_handled
-                    ):
+                    if not INVENTORY_STATE.get("show_form") and INVENTORY_STATE.get("view_item_index") is not None and not form_handled:
                         summary_buttons = INVENTORY_STATE.get("summary_buttons", {})
                         close_rect = summary_buttons.get("close")
-                        edit_rect = summary_buttons.get("edit")
                         remove_rect = summary_buttons.get("remove")
                         idx_summary = summary_buttons.get("index")
                         if close_rect and close_rect.collidepoint(pos_base):
                             close_inventory_summary()
                             form_handled = True
-                        elif edit_rect and edit_rect.collidepoint(pos_base):
-                            idx = idx_summary
-                            items = INVENTORY_STATE.get("items", [])
-                            if idx is not None and 0 <= idx < len(items):
-                                item = items[idx]
-                                form = INVENTORY_STATE["form"]
-                                for key in ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]:
-                                    form[key] = item.get(key, "")
-                                form["image_path"] = item.get("image_path", "")
-                                form["image_surface"] = item.get("image_surface")
-                                form["rects"] = {}
-                                form["focus"] = None
-                                INVENTORY_STATE["editing_index"] = idx
-                                INVENTORY_STATE["show_form"] = True
-                                INVENTORY_STATE["view_item_index"] = None
-                                INVENTORY_STATE["form_dropdown"] = None
-                                INVENTORY_STATE["form_error"] = ""
-                                INVENTORY_STATE["summary_buttons"] = {}
-                                form_handled = True
                         elif remove_rect and remove_rect.collidepoint(pos_base):
                             if idx_summary is not None:
                                 remove_inventory_item(idx_summary)
@@ -2280,19 +2043,10 @@ def main():
                     if form_handled:
                         continue
                     clicked_row = None
-                    handled_row_action = False
-                    for row_info in INVENTORY_STATE.get("item_rows", []):
-                        roll_rect = row_info.get("roll_rect")
-                        if roll_rect and roll_rect.collidepoint(pos_base):
-                            roll_inventory_item_damage(row_info.get("index"))
-                            handled_row_action = True
+                    for idx_row, rect in INVENTORY_STATE.get("item_rows", []):
+                        if rect.collidepoint(pos_base):
+                            clicked_row = idx_row
                             break
-                        row_rect = row_info.get("row_rect")
-                        if row_rect and row_rect.collidepoint(pos_base):
-                            clicked_row = row_info.get("index")
-                            break
-                    if handled_row_action:
-                        continue
                     if clicked_row is not None:
                         INVENTORY_STATE["view_item_index"] = clicked_row
                         INVENTORY_STATE["show_form"] = False
