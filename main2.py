@@ -172,6 +172,8 @@ INVENTORY_STATE = {
     "form_buttons": {},
     "items": [],
     "item_rows": [],
+    "filter_buttons": [],
+    "category_filter": None,
     "view_item_index": None,
     "summary_buttons": {},
     "editing_index": None,
@@ -369,24 +371,41 @@ def snapshot_inventory_form():
     return data
 
 
+def filter_inventory_items():
+    """Retorna lista de tuplas (index_original, item) respeitando o filtro de categoria."""
+    items = INVENTORY_STATE.get("items", [])
+    category = INVENTORY_STATE.get("category_filter")
+    if not category:
+        return list(enumerate(items))
+    target = category.strip().lower()
+    filtered = []
+    for idx, item in enumerate(items):
+        item_cat = (item.get("category") or "").strip().lower()
+        if item_cat == target:
+            filtered.append((idx, item))
+    return filtered
+
+
 def add_inventory_item_from_form():
     item = snapshot_inventory_form()
     if not item.get("name"):
         item["name"] = "Item sem nome"
     space_val = safe_space_value(item.get("space"))
-    tipo_val = safe_type_value(item.get("tipo"))
-    type_idx = tipo_val - 1
+    raw_tipo = item.get("tipo")
+    tipo_val = safe_type_value(raw_tipo) if str(raw_tipo).strip() else None
+    type_idx = (tipo_val - 1) if tipo_val else None
     edit_index = INVENTORY_STATE.get("editing_index")
     base_weight = calc_inventory_weight(exclude_index=edit_index)
     limit = get_inventory_weight_limit()
     if space_val > 0 and base_weight + space_val > limit:
         INVENTORY_STATE["form_error"] = "Limite de peso atingido"
         return
-    type_counts = count_items_by_type(exclude_index=edit_index)
-    type_limit = INVENTORY_STATE["limit_values"][type_idx]
-    if type_limit > 0 and type_counts[type_idx] + 1 > type_limit:
-        INVENTORY_STATE["form_error"] = f"Limite do tipo {tipo_val} atingido"
-        return
+    if tipo_val:
+        type_counts = count_items_by_type(exclude_index=edit_index)
+        type_limit = INVENTORY_STATE["limit_values"][type_idx]
+        if type_limit > 0 and type_counts[type_idx] + 1 > type_limit:
+            INVENTORY_STATE["form_error"] = f"Limite do tipo {tipo_val} atingido"
+            return
     INVENTORY_STATE["form_error"] = ""
     items = INVENTORY_STATE.setdefault("items", [])
     if edit_index is not None and 0 <= edit_index < len(items):
@@ -672,7 +691,10 @@ def count_items_by_type(exclude_index=None):
     for idx, item in enumerate(INVENTORY_STATE.get("items", [])):
         if exclude_index is not None and idx == exclude_index:
             continue
-        tipo = safe_type_value(item.get("tipo"))
+        raw_tipo = item.get("tipo")
+        if raw_tipo is None or str(raw_tipo).strip() == "":
+            continue
+        tipo = safe_type_value(raw_tipo)
         counts[tipo - 1] += 1
     return counts
 
@@ -1389,9 +1411,16 @@ def draw_inventory_panel(surface):
 
         items = INVENTORY_STATE.get("items", [])
         view_index = INVENTORY_STATE.get("view_item_index")
-        if view_index is not None and not (0 <= view_index < len(items)):
-            view_index = None
-            INVENTORY_STATE["view_item_index"] = None
+        category_filter = INVENTORY_STATE.get("category_filter")
+        if view_index is not None:
+            if not (0 <= view_index < len(items)):
+                view_index = None
+                INVENTORY_STATE["view_item_index"] = None
+            elif category_filter:
+                item_cat = (items[view_index].get("category") or "").strip().lower()
+                if item_cat != category_filter.strip().lower():
+                    view_index = None
+                    INVENTORY_STATE["view_item_index"] = None
         mode = "form" if INVENTORY_STATE.get("show_form") else ("view" if view_index is not None else "empty")
 
         if mode == "form":
@@ -1579,15 +1608,21 @@ def draw_inventory_panel(surface):
         gap = 8
         cols = 3
         btn_w = max(max(FONTS["xs"].size(tag)[0] + 20 for tag in tags), 96)
+        INVENTORY_STATE["filter_buttons"] = []
+        active_filter = INVENTORY_STATE.get("category_filter")
         for i, tag in enumerate(tags):
             row = i // cols
             col = i % cols
             tx = list_inner.x + col * (btn_w + gap)
             ty = list_inner.y + row * (tag_h + gap)
             rect = pygame.Rect(tx, ty, btn_w, tag_h)
-            pygame.draw.rect(surface, GRAY_50, rect)
-            pygame.draw.rect(surface, WHITE, rect, 1)
+            is_active = active_filter == tag
+            fill_color = GRAY_70 if is_active else GRAY_50
+            border_color = ORANGE if is_active else WHITE
+            pygame.draw.rect(surface, fill_color, rect)
+            pygame.draw.rect(surface, border_color, rect, 2 if is_active else 1)
             draw_text(surface, tag, FONTS["xs"], WHITE, rect.center, center=True)
+            INVENTORY_STATE["filter_buttons"].append((tag, rect))
 
         rows_count = (len(tags) + cols - 1) // cols
         table_rect = pygame.Rect(
@@ -1627,7 +1662,7 @@ def draw_inventory_panel(surface):
         INVENTORY_STATE["item_rows"] = []
         row_h = 60
         y_row = table_rect.y + header_h
-        items = INVENTORY_STATE.get("items", [])
+        filtered_items = filter_inventory_items()
         row_index = 0
         available_rows = int((table_rect.height - header_h) // row_h)
         while row_index < available_rows and y_row + row_h <= table_rect.bottom:
@@ -1636,9 +1671,9 @@ def draw_inventory_panel(surface):
             pygame.draw.rect(surface, WHITE, row_rect, 1)
             pygame.draw.line(surface, WHITE, (col_split, y_row), (col_split, y_row + row_h))
 
-            if row_index < len(items):
-                item = items[row_index]
-                if INVENTORY_STATE.get("view_item_index") == row_index:
+            if row_index < len(filtered_items):
+                item_index, item = filtered_items[row_index]
+                if INVENTORY_STATE.get("view_item_index") == item_index:
                     pygame.draw.rect(surface, GRAY_50, row_rect, 2)
                 img = item.get("image_surface")
                 if img:
@@ -1681,7 +1716,7 @@ def draw_inventory_panel(surface):
                     pygame.draw.rect(surface, WHITE, roll_btn_rect, 1)
                     draw_text(surface, "DANO", FONTS["xs"], WHITE, roll_btn_rect.center, center=True)
                 INVENTORY_STATE["item_rows"].append(
-                    {"index": row_index, "row_rect": row_rect, "roll_rect": roll_btn_rect}
+                    {"index": item_index, "row_rect": row_rect, "roll_rect": roll_btn_rect}
                 )
             y_row += row_h
             row_index += 1
@@ -1716,6 +1751,7 @@ def draw_inventory_panel(surface):
             else:
                 INVENTORY_STATE["form_dropdown"] = None
     else:
+        INVENTORY_STATE["filter_buttons"] = []
         placeholder_rect = pygame.Rect(panel_x + content_pad, content_y + 10, panel_w - content_pad * 2, panel_h - (content_y + 20))
         pygame.draw.rect(surface, BLACK, placeholder_rect)
         pygame.draw.rect(surface, WHITE, placeholder_rect, 1)
@@ -2278,6 +2314,18 @@ def main():
                                 remove_inventory_item(idx_summary)
                             form_handled = True
                     if form_handled:
+                        continue
+                    filter_clicked = False
+                    if INVENTORY_STATE.get("active_tab") == "INVENTARIO":
+                        for tag, rect in INVENTORY_STATE.get("filter_buttons", []):
+                            if rect.collidepoint(pos_base):
+                                current = INVENTORY_STATE.get("category_filter")
+                                INVENTORY_STATE["category_filter"] = None if current == tag else tag
+                                INVENTORY_STATE["view_item_index"] = None
+                                INVENTORY_STATE["summary_buttons"] = {}
+                                filter_clicked = True
+                                break
+                    if filter_clicked:
                         continue
                     clicked_row = None
                     handled_row_action = False
