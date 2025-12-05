@@ -3,7 +3,7 @@ import math
 import pygame
 
 # Dimensoes base
-WIDTH, HEIGHT = 1280, 900
+WIDTH, HEIGHT = 755, 700
 FPS = 60
 
 # Cores
@@ -287,48 +287,55 @@ def draw_habilidades_panel(surface, state):
     pygame.draw.rect(surface, BLACK, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
 
-    # Upper area
-    left_pad = panel_rect.x + 18
-    top_y = panel_rect.y + 16
-    top_block_h = 130
+    content_pad = 12
+    content_x = panel_rect.x + content_pad
+    content_w = panel_rect.width - content_pad * 2
+    content_y = panel_rect.y + content_pad
+    top_block_h = int(152 * HEIGHT / 700)
+
+    # Espaços esquerdo/direito proporcionais à largura da janela alvo
+    left_w = int(content_w * 0.52)
+    right_w = content_w - left_w - content_pad
+    left_x = content_x
+    right_x = left_x + left_w + content_pad
 
     # Pentagon / armadura
-    pent_center = (left_pad + 70, top_y + 80)
-    draw_pentagon(surface, pent_center, 60)
+    pent_center = (left_x + 70, content_y + 70)
+    draw_pentagon(surface, pent_center, 56)
     base_def = compute_base_defense(state)
     draw_text(surface, f"{base_def}", FONTS["sm_b"], WHITE, (pent_center[0], pent_center[1] - 14), center=True)
     draw_text(surface, "Base 10", FONTS["xs"], WHITE, (pent_center[0], pent_center[1] + 10), center=True)
 
     # Defenses (ligadas a pericias)
-    def_y = top_y + 12
+    def_y = content_y + 10
     cb_size = 16
-    label_x = left_pad + 150
+    label_x = left_x + 120
+    formula_x = label_x + 148
+    diamond_x = left_x + left_w - 30
     for idx, cfg in enumerate(DEF_CONFIG):
-        y = def_y + idx * 32
+        y = def_y + idx * 34
         trained = state.get("skills_trained", {}).get(cfg["key"], False)
         val, attr_val, train_bonus = compute_defense_value(state, cfg["key"], cfg["attr"])
         draw_text(surface, cfg["label"], FONTS["sm_b"], WHITE, (label_x, y))
-        cb_rect = pygame.Rect(label_x + 190, y, cb_size, cb_size)
+        cb_rect = pygame.Rect(label_x + 160, y, cb_size, cb_size)
         draw_checkbox(surface, cb_rect, trained)
         rects["defenses"].append((cfg["key"], cb_rect))
         if cfg["key"] == "CONTRA":
             formula = val  # string like 3D6 + FOR + Treino
-            draw_text(surface, formula, FONTS["sm"], WHITE, (label_x + 214, y))
+            draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             mod_total = attr_val + train_bonus
-            draw_diamond(surface, (label_x + 365, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
+            draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
         else:
             formula_parts = [f"10", f"{cfg['attr']}({attr_val})"]
             if train_bonus:
                 formula_parts.append("Treino(+2)")
             formula = " + ".join(formula_parts)
-            draw_text(surface, formula, FONTS["sm"], WHITE, (label_x + 214, y))
-            draw_diamond(surface, (label_x + 365, y + cb_size // 2 + 2), 22, f"{val:02d}")
+            draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
+            draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{val:02d}")
 
     # Resistencias / proficiencias
-    line_x = panel_rect.centerx + 40
-    line_w = 200
-    draw_text(surface, "RESISTENCIAS", FONTS["md"], WHITE, (line_x, top_y + 4))
-    resist_rect = pygame.Rect(line_x + 150, top_y, 240, 24)
+    draw_text(surface, "RESISTENCIAS", FONTS["md"], WHITE, (right_x, content_y))
+    resist_rect = pygame.Rect(right_x, content_y + 22, right_w, 24)
     border = ORANGE if state.get("focus") == "resist_text" else WHITE
     pygame.draw.rect(surface, GRAY_20, resist_rect)
     pygame.draw.rect(surface, border, resist_rect, 1)
@@ -341,8 +348,8 @@ def draw_habilidades_panel(surface, state):
         caret_y = resist_rect.y + 3
         if (pygame.time.get_ticks() // 400) % 2 == 0:
             pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, resist_rect.bottom - 3), 1)
-    draw_text(surface, "PROFICIENCIAS", FONTS["md"], WHITE, (line_x, top_y + 44))
-    prof_rect = pygame.Rect(line_x + 150, top_y + 40, 240, 24)
+    draw_text(surface, "PROFICIENCIAS", FONTS["md"], WHITE, (right_x, resist_rect.bottom + 8))
+    prof_rect = pygame.Rect(right_x, resist_rect.bottom + 30, right_w, 24)
     border_prof = ORANGE if state.get("focus") == "prof_text" else WHITE
     pygame.draw.rect(surface, GRAY_20, prof_rect)
     pygame.draw.rect(surface, border_prof, prof_rect, 1)
@@ -359,11 +366,13 @@ def draw_habilidades_panel(surface, state):
     rects["fields"]["prof_text"] = prof_rect
 
     # Filters
-    filter_y = top_y + top_block_h - 20
-    filter_shift = 140
+    filter_y = content_y + top_block_h - 20
     filters = ["COMBATE", "NARRATIVA", "MAGIKA"]
+    filter_w = 110
+    filter_gap = 10
+    start_x = content_x
     for i, f in enumerate(filters):
-        rect = pygame.Rect(line_x - 10 + filter_shift + i * 110, filter_y, 90, 26)
+        rect = pygame.Rect(start_x + i * (filter_w + filter_gap), filter_y, filter_w, 26)
         active = state.get("filter") == f
         fill = PURPLE if active else GRAY_60
         pygame.draw.rect(surface, fill, rect)
@@ -371,26 +380,26 @@ def draw_habilidades_panel(surface, state):
         draw_text(surface, f, FONTS["sm_b"], WHITE, rect.center, center=True)
         rects["filters"].append((f, rect))
     # Add toggle button (top-right)
-    add_toggle_w = 110
+    add_toggle_w = 120
     add_toggle_h = 28
-    add_toggle_rect = pygame.Rect(panel_rect.right - 16 - add_toggle_w, filter_y, add_toggle_w, add_toggle_h)
+    add_toggle_rect = pygame.Rect(panel_rect.right - content_pad - add_toggle_w, filter_y, add_toggle_w, add_toggle_h)
     draw_button(surface, add_toggle_rect, "Adicionar", GREEN, color_border=WHITE)
     rects["buttons"]["add_toggle"] = add_toggle_rect
 
     # Form area
-    form_y = top_y + top_block_h + 6
-    form_area = pygame.Rect(left_pad, form_y, panel_rect.width // 2 - 30, panel_rect.bottom - form_y - 12)
+    form_y = filter_y + 36
+    form_area = pygame.Rect(content_x, form_y, left_w, panel_rect.bottom - form_y - content_pad)
     pygame.draw.rect(surface, BLACK, form_area)
     pygame.draw.rect(surface, WHITE, form_area, 2)
 
     form = state["form"]
-    inner = form_area.inflate(-14, -14)
+    inner = form_area.inflate(-12, -12)
     y = inner.y
 
     rect_fields = rects["fields"]
     show_form = state.get("show_form") or state.get("selected") is not None
     if show_form:
-        name_rect = pygame.Rect(inner.x, y + 18, inner.width - 200, 60)
+        name_rect = pygame.Rect(inner.x, y + 16, inner.width - 140, 56)
         border = ORANGE if state.get("focus") == "name" else WHITE
         pygame.draw.rect(surface, GRAY_20, name_rect)
         pygame.draw.rect(surface, border, name_rect, 1)
@@ -407,23 +416,23 @@ def draw_habilidades_panel(surface, state):
         rect_fields["name"] = name_rect
 
         # Remove / Edit buttons
-        btn_block_w = 180
-        btn_block_x = name_rect.right + 60
-        btn_remove = pygame.Rect(btn_block_x + (btn_block_w - 90) // 2, name_rect.y, 90, 28)
-        btn_edit = pygame.Rect(btn_block_x + (btn_block_w - 90) // 2, name_rect.y + 34, 90, 28)
+        btn_block_w = inner.width - name_rect.width - 12
+        btn_block_x = name_rect.right + 8
+        btn_remove = pygame.Rect(btn_block_x, name_rect.y, btn_block_w, 26)
+        btn_edit = pygame.Rect(btn_block_x, name_rect.y + 32, btn_block_w, 26)
         draw_button(surface, btn_remove, "Remover", RED)
         edit_label = "Adicionar" if state.get("selected") is None else "Editar"
         draw_button(surface, btn_edit, edit_label, GREEN)
         rects["buttons"]["remove"] = btn_remove
         rects["buttons"]["edit"] = btn_edit
-        y = name_rect.bottom + 20
+        y = name_rect.bottom + 16
 
         # Row tipo/custo/bonus/dano (duas colunas)
-        row_gap = 12
+        row_gap = 10
         col_w = (inner.width - row_gap) // 2
         field_h = 22
-        base_y = y + 6
-        vertical_step = 34
+        base_y = y + 4
+        vertical_step = 32
         tipo_rect = pygame.Rect(inner.x, base_y, col_w - 2, field_h)
         custo_rect = pygame.Rect(inner.x + col_w + row_gap, base_y, col_w - 2, field_h)
         bonus_rect = pygame.Rect(inner.x, base_y + vertical_step, col_w - 2, field_h)
@@ -443,11 +452,11 @@ def draw_habilidades_panel(surface, state):
             draw_text(surface, form.get(key, "") or "", FONTS["sm"], WHITE, (rect.x + 4, rect.y + 2))
             rect_fields[key] = rect
         # Empurra os textos para mais baixo e reduz alturas
-        y = dano_rect.bottom + 48
+        y = defesa_rect.bottom + 32
         bottom_margin = 10
-        resumo_h = 30
+        resumo_h = 32
         desc_start = y + resumo_h + 10
-        desc_h = max(60, (inner.bottom - bottom_margin - desc_start) // 2)
+        desc_h = max(60, inner.bottom - bottom_margin - desc_start)
 
         # Resumo
         resumo_rect = pygame.Rect(inner.x, y, inner.width - 4, resumo_h)
@@ -506,7 +515,7 @@ def draw_habilidades_panel(surface, state):
         draw_text(surface, placeholder, FONTS["sm"], WHITE, form_area.center, center=True)
 
     # List area
-    list_area = pygame.Rect(panel_rect.centerx + 10, form_y, panel_rect.width // 2 - 30, panel_rect.bottom - form_y - 12)
+    list_area = pygame.Rect(right_x, form_y, right_w, panel_rect.bottom - form_y - content_pad)
     pygame.draw.rect(surface, BLACK, list_area)
     pygame.draw.rect(surface, WHITE, list_area, 2)
     list_inner = list_area.inflate(-12, -12)

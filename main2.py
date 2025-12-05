@@ -128,6 +128,10 @@ SKILLS = [
     {"name": "Religiao*", "attr": "PRE", "cat": "SOCIAL", "requires_training": True, "bonus": 2, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
 ]
 
+DEFENSE_SKILL_MAP = {"ESQUIVA": "Esquiva*", "BLOQUEIO": "Bloqueio*", "CONTRA": "Contra-Ataque*"}
+SKILL_DEFENSE_MAP = {v: k for k, v in DEFENSE_SKILL_MAP.items()}
+
+
 DICE_STATE = {
     "current": None,
     "history": [],
@@ -188,6 +192,36 @@ INVENTORY_STATE = {
     "editing_index": None,
     "form_error": "",
 }
+
+
+def find_skill_by_name(name):
+    return next((s for s in SKILLS if s["name"] == name), None)
+
+
+def sync_skill_training_to_habilidades(skill_name, trained):
+    key = SKILL_DEFENSE_MAP.get(skill_name)
+    if not key:
+        return
+    HW.HABILIDADES_STATE["skills_trained"][key] = trained
+
+
+def sync_habilidades_training_to_skills():
+    for key, trained in HW.HABILIDADES_STATE.get("skills_trained", {}).items():
+        skill_name = DEFENSE_SKILL_MAP.get(key)
+        if not skill_name:
+            continue
+        skill = find_skill_by_name(skill_name)
+        if skill is not None:
+            skill["trained"] = trained
+
+
+def sync_attrs_to_habilidades():
+    """Copia os atributos atuais para o painel de habilidades para atualizar as fórmulas."""
+    for attr in ATTRIBUTES:
+        code = attr.get("code")
+        if code in HW.HABILIDADES_STATE.get("attrs", {}):
+            HW.HABILIDADES_STATE["attrs"][code] = attr.get("value", 0) or 0
+
 
 def send_note_payload():
     """Prepara payload simples para futura integração com o menu de anotações/email."""
@@ -1770,6 +1804,7 @@ def draw_inventory_panel(surface):
         pygame.draw.rect(surface, WHITE, placeholder_rect, 1)
         msg = None
         if INVENTORY_STATE["active_tab"] == "HABILIDADES":
+            sync_attrs_to_habilidades()
             rects = HW.draw_habilidades_panel(EMBED_STATE["hab_surf"], HW.HABILIDADES_STATE)
             EMBED_STATE["hab_rects"] = rects
             scaled = pygame.transform.smoothscale(EMBED_STATE["hab_surf"], placeholder_rect.size)
@@ -2060,6 +2095,8 @@ def main():
     INVENTORY_STATE["total_values"] = [0, 0, 0, 0, 0]
     INVENTORY_STATE["dropdown"] = None
     INVENTORY_STATE["show_form"] = False
+    sync_habilidades_training_to_skills()
+    sync_attrs_to_habilidades()
 
     running = True
     while running:
@@ -2164,6 +2201,7 @@ def main():
                             rel_x = (pos_base[0] - embed_rect.x) * HW.WIDTH / embed_rect.width
                             rel_y = (pos_base[1] - embed_rect.y) * HW.HEIGHT / embed_rect.height
                             HW.handle_mouse((rel_x, rel_y), EMBED_STATE["hab_rects"], HW.HABILIDADES_STATE)
+                            sync_habilidades_training_to_skills()
                         elif current_tab == "ANOTACOES" and EMBED_STATE.get("notes_rects"):
                             rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
                             rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
@@ -2251,6 +2289,7 @@ def main():
                     # Skills toggles
                     for s in SKILLS:
                         clicked = False
+                        training_changed = False
                         if s.get("choice_rects"):
                             for label, rect in s["choice_rects"].items():
                                 if rect.collidepoint(pos_base):
@@ -2263,14 +2302,18 @@ def main():
                                         s["bonus_choice"] = choice
                                         s["bonus"] = choice
                                         s["trained"] = True
+                                    training_changed = True
                                     clicked = True
                                     break
                         if not clicked and s.get("rect") and s["rect"].collidepoint(pos_base):
                             s["trained"] = not s["trained"]
+                            training_changed = True
                             clicked = True
                         if not clicked and s.get("name_rect") and s["name_rect"].collidepoint(pos_base):
                             roll_skill(s)
                             clicked = True
+                        if training_changed:
+                            sync_skill_training_to_habilidades(s["name"], s["trained"])
                         if clicked:
                             break
                     # Esforço: campos e botões
