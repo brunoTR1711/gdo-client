@@ -4,8 +4,6 @@ import random
 import pygame
 import tkinter as tk
 from tkinter import filedialog
-import habilidades_window as HW
-import anotacoes_window as AW
 
 # Dimensões base do layout original
 BASE_WIDTH = 1920
@@ -137,13 +135,6 @@ DICE_STATE = {
     "display_dice": [1, 1, 1],
     "last_anim": 0,
     "anim_config": {"count": 3, "sides": 6},
-}
-
-EMBED_STATE = {
-    "hab_surf": pygame.Surface((HW.WIDTH, HW.HEIGHT)),
-    "hab_rects": None,
-    "notes_surf": pygame.Surface((AW.WIDTH, AW.HEIGHT)),
-    "notes_rects": None,
 }
 
 UI_STATE = {"hover_attr": None, "hover_skill": None}
@@ -1381,7 +1372,6 @@ def draw_inventory_panel(surface):
     INVENTORY_STATE["limit_rects"].clear()
     INVENTORY_STATE["total_rects"].clear()
     INVENTORY_STATE["add_rect"] = None
-    INVENTORY_STATE["embed_rect"] = None
 
     y = content_y
     current_tab = INVENTORY_STATE["active_tab"]
@@ -1762,27 +1752,12 @@ def draw_inventory_panel(surface):
                 INVENTORY_STATE["form_dropdown"] = None
     else:
         INVENTORY_STATE["filter_buttons"] = []
-        INVENTORY_STATE["form_dropdown"] = None
-        INVENTORY_STATE["form"]["rects"] = {}
         placeholder_rect = pygame.Rect(panel_x + content_pad, content_y + 10, panel_w - content_pad * 2, panel_h - (content_y + 20))
-        INVENTORY_STATE["embed_rect"] = placeholder_rect
         pygame.draw.rect(surface, BLACK, placeholder_rect)
         pygame.draw.rect(surface, WHITE, placeholder_rect, 1)
-        msg = None
-        if INVENTORY_STATE["active_tab"] == "HABILIDADES":
-            rects = HW.draw_habilidades_panel(EMBED_STATE["hab_surf"], HW.HABILIDADES_STATE)
-            EMBED_STATE["hab_rects"] = rects
-            scaled = pygame.transform.smoothscale(EMBED_STATE["hab_surf"], placeholder_rect.size)
-            surface.blit(scaled, placeholder_rect)
-        elif INVENTORY_STATE["active_tab"] == "ANOTACOES":
-            rects = AW.draw_notes_panel(EMBED_STATE["notes_surf"], AW.NOTES_STATE)
-            EMBED_STATE["notes_rects"] = rects
-            scaled = pygame.transform.smoothscale(EMBED_STATE["notes_surf"], placeholder_rect.size)
-            surface.blit(scaled, placeholder_rect)
-        else:
-            msg = f"{INVENTORY_STATE['active_tab']} em construcao"
-        if msg:
-            draw_text(surface, msg, FONTS["md"], WHITE, placeholder_rect.center, center=True)
+        draw_text(surface, f"{INVENTORY_STATE['active_tab']} em construcao", FONTS["md"], WHITE, placeholder_rect.center, center=True)
+        INVENTORY_STATE["form_dropdown"] = None
+        INVENTORY_STATE["form"]["rects"] = {}
 
 def draw_skills_panel(surface):
     panel_x = 14
@@ -2089,15 +2064,6 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
                     continue
-                current_tab = INVENTORY_STATE.get("active_tab")
-                if current_tab == "HABILIDADES":
-                    handled = HW.handle_key(event, HW.HABILIDADES_STATE)
-                    if handled:
-                        continue
-                if current_tab == "ANOTACOES":
-                    handled = AW.handle_key(event, AW.NOTES_STATE)
-                    if handled:
-                        continue
                 if NOTE_STATE["focus"]:
                     field = NOTE_STATE["focus"]
                     if event.key == pygame.K_BACKSPACE:
@@ -2157,18 +2123,6 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos_base = window_to_canvas(event.pos, scale, offset)
                 if pos_base:
-                    current_tab = INVENTORY_STATE.get("active_tab")
-                    embed_rect = INVENTORY_STATE.get("embed_rect")
-                    if current_tab in ("HABILIDADES", "ANOTACOES") and embed_rect and embed_rect.collidepoint(pos_base):
-                        if current_tab == "HABILIDADES" and EMBED_STATE.get("hab_rects"):
-                            rel_x = (pos_base[0] - embed_rect.x) * HW.WIDTH / embed_rect.width
-                            rel_y = (pos_base[1] - embed_rect.y) * HW.HEIGHT / embed_rect.height
-                            HW.handle_mouse((rel_x, rel_y), EMBED_STATE["hab_rects"], HW.HABILIDADES_STATE)
-                        elif current_tab == "ANOTACOES" and EMBED_STATE.get("notes_rects"):
-                            rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
-                            rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
-                            AW.handle_mouse((rel_x, rel_y), EMBED_STATE["notes_rects"], AW.NOTES_STATE)
-                        continue
                     # Dropdown de inventário: clique em opções
                     if INVENTORY_STATE.get("dropdown") and INVENTORY_STATE["dropdown"].get("options"):
                         handled_dropdown = False
@@ -2238,10 +2192,7 @@ def main():
                             break
                     if NOTE_STATE["send_rect"] and NOTE_STATE["send_rect"].collidepoint(pos_base):
                         _note = send_note_payload()
-                        try:
-                            AW.ingest_incoming_note(_note)
-                        except Exception:
-                            pass
+                        # Futuro: integrar _note com menu/listagem de anotações
                         NOTE_STATE["title"] = ""
                         NOTE_STATE["subject"] = ""
                         NOTE_STATE["body"] = ""
