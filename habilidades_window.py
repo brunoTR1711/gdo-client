@@ -152,7 +152,9 @@ DEF_CONFIG = [
 
 
 def compute_base_defense(state):
-    return 10
+    vig = state.get("attrs", {}).get("VIG", 0) or 0
+    armor_bonus = state.get("armor_bonus", 0) or 0
+    return 10 + vig + armor_bonus
 
 
 def compute_defense_value(state, key, attr_key):
@@ -160,9 +162,9 @@ def compute_defense_value(state, key, attr_key):
     trained = state.get("skills_trained", {}).get(key, False)
     train_bonus = 2 if trained else 0
     if key == "CONTRA":
-        parts = [f"3D6", f"{attr_key}({attr_val})"]
+        parts = []
         if train_bonus:
-            parts.append("Treino(+2)")
+            parts.append("")
         return " + ".join(parts), attr_val, train_bonus
     base = compute_base_defense(state)
     return base + attr_val + train_bonus, attr_val, train_bonus
@@ -303,8 +305,11 @@ def draw_habilidades_panel(surface, state):
     pent_center = (left_x + 70, content_y + 70)
     draw_pentagon(surface, pent_center, 56)
     base_def = compute_base_defense(state)
+    vig_val = state.get("attrs", {}).get("VIG", 0) or 0
+    armor_bonus = state.get("armor_bonus", 0) or 0
     draw_text(surface, f"{base_def}", FONTS["sm_b"], WHITE, (pent_center[0], pent_center[1] - 14), center=True)
-    draw_text(surface, "Base 10", FONTS["xs"], WHITE, (pent_center[0], pent_center[1] + 10), center=True)
+    base_label = f"10 + VIG({vig_val}) + Arm({armor_bonus})"
+    draw_text(surface, base_label, FONTS["xs"], WHITE, (pent_center[0], pent_center[1] + 10), center=True)
 
     # Defenses (ligadas a pericias)
     def_y = content_y + 10
@@ -326,9 +331,9 @@ def draw_habilidades_panel(surface, state):
             mod_total = attr_val + train_bonus
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
         else:
-            formula_parts = [f"10", f"{cfg['attr']}({attr_val})"]
+            formula_parts = []
             if train_bonus:
-                formula_parts.append("Treino(+2)")
+                formula_parts.append("")
             formula = " + ".join(formula_parts)
             draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{val:02d}")
