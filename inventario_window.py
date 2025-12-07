@@ -39,12 +39,116 @@ DEFAULT_ITEMS = []
 OPTION_VALUES = {
     "category": ["---"] + CATEGORIES,
     "space": ["---", "0", "1", "2", "3", "4", "5"],
-    "tipo": ["---", "Corpo a corpo", "Distancia", "Explosivo", "M.P.", "M.E.", "M.R."],
+    "tipo": ["---", "Corpo a corpo", "Distancia", "Explosivo", "M.P.", "M.E.", "M.R.", "Energia", "Morte", "conhecimento", "sangue", "Medo"],
     "alcance": ["---", "Perto", "6m", "9m", "12m", "18m"],
     "empunhadura": ["---", "Leve", "Uma mao", "Duas maos"],
     "dano": ["---", "1D4", "1D6", "1D8", "1D10", "1D12", "1D20", "1D100"],
     "protecao": ["---", "1", "2", "3", "4", "5"],
 }
+
+OPTION_FIELDS = {"space", "tipo", "alcance", "empunhadura", "dano", "protecao", "category"}
+
+
+def _normalize_text(txt):
+    mapping = str.maketrans("áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ", "aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC")
+    return (txt or "").translate(mapping).lower().strip()
+
+
+def normalize_category_key(category):
+    cat = _normalize_text(category)
+    if cat.startswith("arma"):
+        return "arma"
+    if cat.startswith("munic"):
+        return "municao"
+    if cat.startswith("protec"):
+        return "protecao"
+    if cat.startswith("magik"):
+        return "magikos"
+    if cat.startswith("colet"):
+        return "coletaveis"
+    if "chave" in cat:
+        return "itens chave"
+    if cat.startswith("comp"):
+        return "componentes"
+    return cat
+
+
+def get_allowed_option_fields(category):
+    cat = normalize_category_key(category)
+    if cat == "arma":
+        return {"space", "tipo", "alcance", "empunhadura", "dano"}
+    if cat == "municao":
+        return {"space", "tipo"}
+    if cat == "protecao":
+        return {"space", "protecao"}
+    if cat == "magikos":
+        return {"space", "tipo", "dano"}
+    if cat in ("coletaveis", "itens chave", "componentes"):
+        return {"space"}
+    return set(OPTION_FIELDS) - {"category"}
+
+
+def get_category_options(category, field):
+    cat = normalize_category_key(category)
+    base = OPTION_VALUES.get(field)
+    if base is None:
+        return None
+    allowed = get_allowed_option_fields(category)
+    if field in OPTION_FIELDS and field != "category" and field not in allowed:
+        return []
+    if cat == "arma":
+        if field == "protecao":
+            return []
+        if field == "tipo":
+            return ["---", "Corpo a corpo", "Distancia", "Explosivo"]
+        if field == "space":
+            return ["---", "0", "1", "2", "3", "4", "5"]
+        return base
+    if cat == "municao":
+        if field == "tipo":
+            return ["---", "M.P.", "M.E.", "M.R."]
+        if field == "space":
+            return ["---", "0", "1", "2", "3", "4", "5"]
+        return []
+    if cat == "protecao":
+        if field == "space":
+            return ["---", "1", "2", "3"]
+        if field == "protecao":
+            return base
+        return []
+    if cat == "magikos":
+        if field == "space":
+            return ["---", "1", "2", "3", "4", "5"]
+        if field == "tipo":
+            return ["---", "Energia", "Morte", "conhecimento", "sangue", "Medo"]
+        if field == "dano":
+            return OPTION_VALUES["dano"]
+        return []
+    if cat in ("coletaveis", "itens chave", "componentes"):
+        if field == "space":
+            return ["---", "1", "2", "3", "4", "5"]
+        return []
+    return base
+
+
+def normalize_form_for_category(form):
+    cat = form.get("category", "")
+    allowed = get_allowed_option_fields(cat)
+    for field in OPTION_FIELDS:
+        if field == "category":
+            continue
+        if field not in allowed:
+            form[field] = ""
+            continue
+        opts = get_category_options(cat, field)
+        if opts is None:
+            continue
+        if not opts:
+            form[field] = ""
+            continue
+        if form.get(field) not in opts:
+            form[field] = opts[0]
+    return form
 
 
 def clone_default_items():
@@ -93,6 +197,7 @@ def open_add_modal(state):
             form[k] = v if v in OPTION_VALUES[k] else OPTION_VALUES[k][0]
         else:
             form[k] = "" if v is None else str(v)
+    normalize_form_for_category(form)
     state["modal"] = {
         "type": "add_item",
         "form": form,
@@ -108,19 +213,8 @@ def close_modal(state):
     state["modal"] = None
 
 
-def cycle_option_value(key, current, delta=1):
-    values = OPTION_VALUES.get(key)
-    if not values:
-        return current
-    try:
-        idx = values.index(current)
-    except ValueError:
-        idx = 0
-    new_idx = (idx + delta) % len(values)
-    return values[new_idx]
-
-
 def build_item_from_form(state, form):
+    normalize_form_for_category(form)
     item = make_blank_item(state)
     item["name"] = (form.get("name") or "").strip()
     item["category"] = (form.get("category") or item["category"]).strip() or OPTION_VALUES["category"][0]
@@ -628,7 +722,10 @@ def draw_modal(surface, state):
     draw_text(surface, "Preencha os campos e confirme para adicionar.", FONTS["xs"], GRAY_80, (modal_rect.x + 16, modal_rect.y + 40))
 
     form = modal.get("form") or {}
+    normalize_form_for_category(form)
     focus_key = modal.get("focus")
+    allowed_fields = get_allowed_option_fields(form.get("category"))
+    options_map = {f: get_category_options(form.get("category"), f) for f in OPTION_FIELDS}
     fields_rects = {}
 
     padding_x = modal_rect.x + 16
@@ -638,7 +735,7 @@ def draw_modal(surface, state):
     input_h = 26
     col_w = (modal_w - 32 - col_gap) // 2
 
-    small_fields = [
+    base_small_fields = [
         ("name", "Nome"),
         ("category", "Categoria"),
         ("space", "Espaco"),
@@ -649,6 +746,17 @@ def draw_modal(surface, state):
         ("protecao", "Protecao"),
         ("localizacao", "Localizacao"),
     ]
+    small_fields = []
+    for key, label in base_small_fields:
+        if key in OPTION_FIELDS and key != "category":
+            if key not in allowed_fields:
+                continue
+            opts = options_map.get(key, OPTION_VALUES.get(key))
+            if opts is not None and len(opts) == 0:
+                continue
+            if form.get(key) not in opts:
+                form[key] = opts[0] if opts else form.get(key, "")
+        small_fields.append((key, label))
     for idx, (key, label) in enumerate(small_fields):
         col = idx % 2
         row = idx // 2
