@@ -114,6 +114,20 @@ def wrap_text(text, font, max_width):
     return lines or [""]
 
 
+def wrap_text_clamped(text, font, max_width, max_height):
+    """Divide texto respeitando largura e altura."""
+    base_lines = wrap_text(text or "", font, max_width)
+    line_step = font.get_height() + 2
+    max_lines = max(1, max_height // max(1, line_step))
+    if len(base_lines) <= max_lines:
+        return base_lines
+    trimmed = base_lines[:max_lines]
+    if trimmed:
+        last = trimmed[-1]
+        trimmed[-1] = (last[: max(0, len(last) - 3)] + "...") if len(last) > 3 else "..."
+    return trimmed
+
+
 def safe_int(value, default=0):
     try:
         if isinstance(value, str):
@@ -200,13 +214,12 @@ def draw_inventory_panel(surface, state):
     surface.fill(BLACK)
     rects = {"filters": [], "rows": [], "buttons": {}, "fields": {}, "list_area": None}
 
-    panel_rect = pygame.Rect(8, 8, WIDTH - 16, HEIGHT - 16)
+    panel_rect = pygame.Rect(8, 2, WIDTH - 16, HEIGHT - 16)
     pygame.draw.rect(surface, GRAY_15, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
     inner = panel_rect.inflate(-16, -16)
 
-    draw_text(surface, "INVENTARIO", FONTS["md"], WHITE, (inner.x, inner.y - 4))
-    limits_rect = pygame.Rect(inner.x, inner.y + 10, inner.width, 120)
+    limits_rect = pygame.Rect(inner.x, inner.y + 1, inner.width, 120)
     draw_limits_section(surface, limits_rect, state)
 
     content_top = limits_rect.bottom + 12
@@ -250,7 +263,7 @@ def draw_limit_row(surface, label, values, start_pos):
 def draw_limits_section(surface, rect, state):
     pygame.draw.rect(surface, BLACK, rect)
     pygame.draw.rect(surface, WHITE, rect, 1)
-    inner = rect.inflate(-10, -10)
+    inner = rect.inflate(-12, -12)
     row_height = 55
     draw_limit_row(surface, "LIMITE DE ITENS", state.get("limit_slots", []), (inner.x, inner.y))
     draw_limit_row(
@@ -271,10 +284,9 @@ def draw_form_box(surface, rect, label, text):
     pygame.draw.rect(surface, BLACK, rect)
     pygame.draw.rect(surface, WHITE, rect, 1)
     draw_text(surface, label, FONTS["xs"], WHITE, (rect.x, rect.y - 16))
-    lines = wrap_text(text or "--", FONTS["xs"], rect.width - 12)
+    lines = wrap_text_clamped(text or "--", FONTS["xs"], rect.width - 12, rect.height - 12)
     y = rect.y + 6
-    max_lines = max(1, rect.height // (FONTS["xs"].get_height() + 2))
-    for line in lines[:max_lines]:
+    for line in lines:
         draw_text(surface, line, FONTS["xs"], WHITE, (rect.x + 6, y))
         y += FONTS["xs"].get_height() + 2
 
@@ -364,7 +376,7 @@ def draw_right_panel(surface, rect, state, rects):
     pygame.draw.rect(surface, WHITE, rect, 1)
     inner = rect.inflate(-10, -10)
 
-    add_rect = pygame.Rect(inner.right - 120, inner.y, 120, 32)
+    add_rect = pygame.Rect(inner.right - 120, inner.y, 120, 321)
     pygame.draw.rect(surface, GREEN, add_rect)
     pygame.draw.rect(surface, WHITE, add_rect, 1)
     draw_text(surface, "ADICIONAR", FONTS["sm_b"], BLACK, add_rect.center, center=True)
