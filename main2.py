@@ -2,8 +2,6 @@ import sys
 import math
 import random
 import pygame
-import tkinter as tk
-from tkinter import filedialog
 import habilidades_window as HW
 import anotacoes_window as AW
 
@@ -150,48 +148,14 @@ EMBED_STATE = {
     "notes_rects": None,
 }
 
-UI_STATE = {"hover_attr": None, "hover_skill": None}
-
-INVENTORY_STATE = {
-    "limit_values": [0, 0, 0, 0, 0],
-    "total_values": [0, 0, 0, 0, 0],
-    "limit_rects": [],
-    "total_rects": [],
-    "dropdown": None,  # {"type": "limit", "index": int, "options": [rects]}
-    "weight_bonus": 0,
-    "current_weight": 0,
+SIDE_PANEL_STATE = {
     "tabs": ["GERAL", "INVENTARIO", "HABILIDADES", "ANOTACOES"],
-    "active_tab": "INVENTARIO",
+    "active_tab": "GERAL",
     "tab_rects": [],
-    "show_form": False,
-    "form": {
-        "image_path": "",
-        "image_surface": None,
-        "name": "",
-        "category": "",
-        "space": "",
-        "tipo": "",
-        "alcance": "",
-        "empunhadura": "",
-        "dano": "",
-        "localizacao": "",
-        "descricao": "",
-        "info1": "",
-        "info2": "",
-        "rects": {},
-        "focus": None,
-    },
-    "form_dropdown": None,
-    "form_buttons": {},
-    "items": [],
-    "item_rows": [],
-    "filter_buttons": [],
-    "category_filter": None,
-    "view_item_index": None,
-    "summary_buttons": {},
-    "editing_index": None,
-    "form_error": "",
+    "embed_rect": None,
 }
+
+UI_STATE = {"hover_attr": None, "hover_skill": None}
 
 
 def find_skill_by_name(name):
@@ -335,153 +299,6 @@ def wrap_text(text, font, max_width):
     return lines, line_starts
 
 
-FORM_DROPDOWN_OPTIONS = {
-    "category": ["Armas", "municao", "Protecao", "Magikos", "Coletaveis", "Itens chave", "componentes"],
-    "space": ["0", "1", "2", "3", "4", "5"],
-    "tipo": ["1", "2", "3", "4", "5"],
-    "alcance": ["---", "1m", "3m", "6m", "9m", "12m"],
-    "empunhadura": ["---", "leve", "uma mao", "duas maos"],
-    "dano": ["1D4", "1D6", "1D8", "1D10", "1D12", "1D20"],
-}
-FORM_TEXT_FIELDS = {"name", "localizacao", "descricao", "info1", "info2"}
-FORM_MULTILINE_FIELDS = {"descricao", "info1", "info2"}
-FORM_BOLD_FIELDS = {"info1", "info2"}
-
-
-def form_insert_text(field, text):
-    buf = INVENTORY_STATE["form"].get(field, "")
-    INVENTORY_STATE["form"][field] = buf + text
-
-
-def form_backspace(field):
-    buf = INVENTORY_STATE["form"].get(field, "")
-    if buf:
-        INVENTORY_STATE["form"][field] = buf[:-1]
-
-
-def reset_inventory_form():
-    form = INVENTORY_STATE["form"]
-    for key in ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]:
-        form[key] = ""
-    form["image_path"] = ""
-    form["image_surface"] = None
-    form["rects"] = {}
-    form["focus"] = None
-    INVENTORY_STATE["form_dropdown"] = None
-    INVENTORY_STATE["form_error"] = ""
-    INVENTORY_STATE["editing_index"] = None
-
-
-def select_inventory_image():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    file_path = filedialog.askopenfilename(
-        title="Selecione uma imagem",
-        filetypes=[("Imagens", "*.png;*.jpg;*.jpeg;*.bmp")],
-    )
-    root.destroy()
-    if not file_path:
-        return "", None
-    try:
-        surface = pygame.image.load(file_path).convert_alpha()
-    except pygame.error:
-        return "", None
-    return file_path, surface
-
-
-def form_set_focus(field):
-    INVENTORY_STATE["form"]["focus"] = field
-
-
-def form_clear_dropdown():
-    INVENTORY_STATE["form_dropdown"] = None
-
-
-def snapshot_inventory_form():
-    form = INVENTORY_STATE["form"]
-    fields = ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]
-    data = {}
-    for field in fields:
-        value = form.get(field, "")
-        if isinstance(value, str):
-            data[field] = value.strip() if field in {"name", "category", "space", "alcance", "empunhadura", "dano", "localizacao"} else value
-        else:
-            data[field] = value
-    image_surface = form.get("image_surface")
-    data["image_surface"] = image_surface.copy() if image_surface else None
-    data["image_path"] = form.get("image_path", "")
-    return data
-
-
-def filter_inventory_items():
-    """Retorna lista de tuplas (index_original, item) respeitando o filtro de categoria."""
-    items = INVENTORY_STATE.get("items", [])
-    category = INVENTORY_STATE.get("category_filter")
-    if not category:
-        return list(enumerate(items))
-    target = category.strip().lower()
-    filtered = []
-    for idx, item in enumerate(items):
-        item_cat = (item.get("category") or "").strip().lower()
-        if item_cat == target:
-            filtered.append((idx, item))
-    return filtered
-
-
-def add_inventory_item_from_form():
-    item = snapshot_inventory_form()
-    if not item.get("name"):
-        item["name"] = "Item sem nome"
-    space_val = safe_space_value(item.get("space"))
-    raw_tipo = item.get("tipo")
-    tipo_val = safe_type_value(raw_tipo) if str(raw_tipo).strip() else None
-    type_idx = (tipo_val - 1) if tipo_val else None
-    edit_index = INVENTORY_STATE.get("editing_index")
-    base_weight = calc_inventory_weight(exclude_index=edit_index)
-    limit = get_inventory_weight_limit()
-    if space_val > 0 and base_weight + space_val > limit:
-        INVENTORY_STATE["form_error"] = "Limite de peso atingido"
-        return
-    if tipo_val:
-        type_counts = count_items_by_type(exclude_index=edit_index)
-        type_limit = INVENTORY_STATE["limit_values"][type_idx]
-        if type_limit > 0 and type_counts[type_idx] + 1 > type_limit:
-            INVENTORY_STATE["form_error"] = f"Limite do tipo {tipo_val} atingido"
-            return
-    INVENTORY_STATE["form_error"] = ""
-    items = INVENTORY_STATE.setdefault("items", [])
-    if edit_index is not None and 0 <= edit_index < len(items):
-        items[edit_index] = item
-    else:
-        items.append(item)
-    refresh_inventory_totals()
-    reset_inventory_form()
-    INVENTORY_STATE["show_form"] = False
-    INVENTORY_STATE["view_item_index"] = None
-
-
-def cancel_inventory_form():
-    reset_inventory_form()
-    INVENTORY_STATE["show_form"] = False
-    INVENTORY_STATE["view_item_index"] = None
-    INVENTORY_STATE["editing_index"] = None
-
-
-def close_inventory_summary():
-    INVENTORY_STATE["view_item_index"] = None
-    INVENTORY_STATE["summary_buttons"] = {}
-    INVENTORY_STATE["editing_index"] = None
-
-
-def remove_inventory_item(index):
-    items = INVENTORY_STATE.setdefault("items", [])
-    if 0 <= index < len(items):
-        items.pop(index)
-    refresh_inventory_totals()
-    close_inventory_summary()
-
-
 def roll_3d6():
     """Retorna lista com 3 resultados de d6."""
     return [random.randint(1, 6) for _ in range(3)]
@@ -541,37 +358,6 @@ def roll_skill(skill):
         trained=skill["trained"],
     )
     start_roll(entry)
-
-
-def roll_item_damage(index):
-    items = INVENTORY_STATE.get("items", [])
-    if index is None or not (0 <= index < len(items)):
-        return
-    item = items[index]
-    dmg_info = parse_damage_die(item.get("dano"))
-    if not dmg_info:
-        return
-    count, sides = dmg_info
-    dice = roll_custom_dice(count, sides)
-    total = sum(dice)
-    entry = {
-        "label": f"{item.get('name', 'Item')} (Dano)",
-        "roll_type": "damage",
-        "skill_name": item.get("name", "Item"),
-        "attr_code": "DMG",
-        "attr_value": 0,
-        "skill_bonus": 0,
-        "trained": False,
-        "dice": dice,
-        "total": total,
-        "dice_config": {"count": count, "sides": sides},
-        "damage_expr": f"{count}D{sides}",
-    }
-    start_roll(entry)
-
-
-def roll_inventory_item_damage(index):
-    roll_item_damage(index)
 
 
 def roll_summary(entry):
@@ -685,65 +471,6 @@ def get_attr_value(code):
         if attr["code"] == code:
             return attr["value"]
     return 0
-
-
-def safe_space_value(value):
-    """Converte valor do campo de espaço para inteiro >= 0."""
-    if value is None:
-        return 0
-    try:
-        val = int(str(value).strip() or 0)
-    except (ValueError, TypeError):
-        return 0
-    return max(0, val)
-
-
-def safe_type_value(value):
-    """Converte valor de tipo para 1-5; padrão 1."""
-    try:
-        val = int(str(value).strip() or 1)
-    except (ValueError, TypeError):
-        return 1
-    return min(5, max(1, val))
-
-
-def get_inventory_weight_limit():
-    bonus = INVENTORY_STATE.get("weight_bonus", 0)
-    base_for = get_attr_value("FOR")
-    extra = 2
-    if base_for >= 6:
-        extra = 9
-    elif base_for >= 5:
-        extra = 7
-    elif base_for >= 4:
-        extra = 4
-    return max(0, base_for + extra + bonus)
-
-
-def calc_inventory_weight(exclude_index=None):
-    total = 0
-    for idx, item in enumerate(INVENTORY_STATE.get("items", [])):
-        if exclude_index is not None and idx == exclude_index:
-            continue
-        total += safe_space_value(item.get("space"))
-    return total
-
-
-def count_items_by_type(exclude_index=None):
-    counts = [0, 0, 0, 0, 0]
-    for idx, item in enumerate(INVENTORY_STATE.get("items", [])):
-        if exclude_index is not None and idx == exclude_index:
-            continue
-        raw_tipo = item.get("tipo")
-        if raw_tipo is None or str(raw_tipo).strip() == "":
-            continue
-        tipo = safe_type_value(raw_tipo)
-        counts[tipo - 1] += 1
-    return counts
-
-
-def refresh_inventory_totals():
-    INVENTORY_STATE["total_values"] = count_items_by_type()
 
 
 def roll_custom_dice(count, sides):
@@ -1277,547 +1004,46 @@ def draw_inventory_panel(surface):
     panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
     pygame.draw.rect(surface, BLACK, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
-    content_pad = 10
 
-    def draw_boxes(label, values, start_y, store_rects):
-        draw_text(surface, label, FONTS["sm"], WHITE, (panel_x + content_pad, start_y))
-        box_w = 28
-        gap = 6
-        base_x = panel_x + 150
-        for i, val in enumerate(values):
-            rect = pygame.Rect(base_x + i * (box_w + gap), start_y - 2, box_w, box_w)
-            pygame.draw.rect(surface, BLACK, rect)
-            pygame.draw.rect(surface, WHITE, rect, 1)
-            draw_text(surface, str(val), FONTS["sm"], WHITE, rect.center, center=True)
-            store_rects.append(rect)
-        return start_y + box_w + 6
-
-    def draw_form_label(text, rect):
-        draw_text(surface, text, FONTS["xs"], WHITE, (rect.x, rect.y - 14))
-
-    def draw_form_text(field, rect, label, multiline=False, bold=False):
-        form_state = INVENTORY_STATE["form"]
-        focus_field = form_state.get("focus")
-        value = form_state.get(field, "")
-        border_color = ORANGE if focus_field == field else WHITE
-        bg_color = BLACK if multiline else GRAY_30
-        pygame.draw.rect(surface, bg_color, rect)
-        pygame.draw.rect(surface, border_color, rect, 2 if focus_field == field else 1)
-        draw_form_label(label, rect)
-        font = FONTS["sm_b"] if bold else FONTS["sm"]
-        text_color = WHITE
-        if multiline:
-            lines, _ = wrap_text(value or "", font, rect.width - 10)
-            line_h = font.get_linesize()
-            max_lines = max(1, rect.height // line_h)
-            for i, line in enumerate(lines[:max_lines]):
-                draw_text(surface, line, font, text_color, (rect.x + 5, rect.y + 4 + i * line_h))
-        else:
-            display = value or ""
-            render = font.render(display, True, text_color)
-            text_rect = render.get_rect()
-            text_rect.topleft = (rect.x + 5, rect.y + rect.height // 2 - text_rect.height // 2)
-            surface.blit(render, text_rect)
-        INVENTORY_STATE["form"]["rects"][field] = rect
-        if focus_field == field:
-            caret_visible = (pygame.time.get_ticks() // 400) % 2 == 0
-            if caret_visible:
-                if multiline:
-                    lines, _ = wrap_text(value or "", font, rect.width - 10)
-                    if not lines:
-                        lines = [""]
-                    line_h = font.get_linesize()
-                    caret_y = rect.y + 4 + (len(lines) - 1) * line_h
-                    caret_x = rect.x + 5 + font.size(lines[-1])[0]
-                    caret_h = line_h - 4
-                else:
-                    caret_x = rect.x + 5 + font.size(value)[0]
-                    caret_y = rect.y + rect.height // 2 - font.get_linesize() // 2
-                    caret_h = font.get_linesize() - 4
-                pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, caret_y + caret_h), 1)
-
-    def draw_form_dropdown(field, rect, label):
-        dropdown = INVENTORY_STATE.get("form_dropdown")
-        active = dropdown and dropdown.get("field") == field
-        border_color = ORANGE if active else WHITE
-        pygame.draw.rect(surface, GRAY_30, rect)
-        pygame.draw.rect(surface, border_color, rect, 2 if active else 1)
-        draw_form_label(label, rect)
-        value = INVENTORY_STATE["form"].get(field, "")
-        display = value if value else "--"
-        draw_text(surface, display, FONTS["sm"], WHITE, (rect.x + 6, rect.y + 6))
-        tri_x = rect.right - 14
-        tri_y = rect.y + rect.height // 2
-        pygame.draw.polygon(surface, WHITE, [(tri_x - 6, tri_y - 4), (tri_x + 6, tri_y - 4), (tri_x, tri_y + 4)])
-        INVENTORY_STATE["form"]["rects"][field] = rect
-
-    def draw_image_field(rect):
-        pygame.draw.rect(surface, GRAY_30, rect)
-        pygame.draw.rect(surface, WHITE, rect, 1)
-        img_surface = INVENTORY_STATE["form"].get("image_surface")
-        if img_surface:
-            scaled = pygame.transform.smoothscale(img_surface, (rect.width, rect.height))
-            surface.blit(scaled, rect)
-        else:
-            draw_text(surface, "imagem\ndo\nitem*", FONTS["xs"], WHITE, rect.center, center=True)
-        INVENTORY_STATE["form"]["rects"]["image"] = rect
-
-    def draw_multiline_box(rect, label, field, bold=False):
-        draw_form_text(field, rect, label, multiline=True, bold=bold)
-
-    def draw_summary_field(rect, label, value, multiline=False, bold=False):
-        value = value or ("--" if not multiline else "")
-        pygame.draw.rect(surface, BLACK, rect)
-        pygame.draw.rect(surface, WHITE, rect, 1)
-        draw_form_label(label, rect)
-        font = FONTS["sm_b"] if bold else FONTS["sm"]
-        color = WHITE
-        if multiline:
-            text = value if value else ""
-            lines, _ = wrap_text(text, font, rect.width - 10)
-            if not lines:
-                lines = ["--"]
-            line_h = font.get_linesize()
-            max_lines = max(1, rect.height // line_h)
-            for i, line in enumerate(lines[:max_lines]):
-                draw_text(surface, line, font, color, (rect.x + 5, rect.y + 4 + i * line_h))
-        else:
-            display = value if value else "--"
-            render = font.render(display, True, color)
-            rect_text = render.get_rect()
-            rect_text.topleft = (rect.x + 5, rect.y + rect.height // 2 - rect_text.height // 2)
-            surface.blit(render, rect_text)
-
-    def draw_summary_image(rect, surface_img):
-        pygame.draw.rect(surface, GRAY_30, rect)
-        pygame.draw.rect(surface, WHITE, rect, 1)
-        if surface_img:
-            scaled = pygame.transform.smoothscale(surface_img, (rect.width, rect.height))
-            surface.blit(scaled, rect)
-        else:
-            draw_text(surface, "sem\nimagem", FONTS["xs"], WHITE, rect.center, center=True)
-
-    INVENTORY_STATE["tab_rects"].clear()
-    tabs = INVENTORY_STATE["tabs"]
+    tabs = SIDE_PANEL_STATE["tabs"]
     tab_h = 34
-    tab_w = panel_w // len(tabs)
-    for i, label in enumerate(tabs):
-        x = panel_x + i * tab_w
-        rect = pygame.Rect(x, panel_y, tab_w, tab_h)
-        active = label == INVENTORY_STATE["active_tab"]
+    tab_w = panel_w // max(1, len(tabs))
+    SIDE_PANEL_STATE["tab_rects"] = []
+    for idx, label in enumerate(tabs):
+        rect = pygame.Rect(panel_x + idx * tab_w, panel_y, tab_w, tab_h)
+        active = label == SIDE_PANEL_STATE["active_tab"]
         pygame.draw.rect(surface, GRAY_50 if active else GRAY_70, rect)
         pygame.draw.rect(surface, BLACK, rect, 1)
         draw_text(surface, label, FONTS["md"], WHITE, rect.center, center=True)
-        INVENTORY_STATE["tab_rects"].append((label, rect))
+        SIDE_PANEL_STATE["tab_rects"].append((label, rect))
 
-    content_y = panel_y + tab_h + 6
+    content_rect = pygame.Rect(
+        panel_x + 10,
+        panel_y + tab_h + 10,
+        panel_w - 20,
+        panel_h - tab_h - 20,
+    )
+    pygame.draw.rect(surface, BLACK, content_rect)
+    pygame.draw.rect(surface, WHITE, content_rect, 1)
+    SIDE_PANEL_STATE["embed_rect"] = None
 
-    INVENTORY_STATE["limit_rects"].clear()
-    INVENTORY_STATE["total_rects"].clear()
-    INVENTORY_STATE["add_rect"] = None
-    INVENTORY_STATE["embed_rect"] = None
-
-    y = content_y
-    current_tab = INVENTORY_STATE["active_tab"]
-    is_inventory = current_tab.upper().startswith("INVENT")
-
-    if is_inventory:
-        INVENTORY_STATE["total_values"] = count_items_by_type()
-        y = draw_boxes("LIMITE DE ITENS", INVENTORY_STATE["limit_values"], y, INVENTORY_STATE["limit_rects"])
-        y = draw_boxes("TOTAL NO INVENTARIO", INVENTORY_STATE["total_values"], y, INVENTORY_STATE["total_rects"])
-        draw_text(surface, "PESO", FONTS["sm"], WHITE, (panel_x + content_pad, y))
-        max_weight = get_inventory_weight_limit()
-        current_w = calc_inventory_weight()
-        INVENTORY_STATE["current_weight"] = current_w
-        draw_text(surface, f"{current_w:02d}/{max_weight:02d}", FONTS["sm"], WHITE, (panel_x + 150, y))
-
-        form_y = y + 32
-        gap = 12
-        split_x = panel_x + panel_w // 2
-        left_x = panel_x + content_pad
-        left_w = split_x - gap // 2 - left_x
-        right_x = split_x + gap // 2
-        right_w = panel_rect.right - content_pad - right_x
-
-        form_rect = pygame.Rect(left_x, form_y, left_w, panel_h - form_y - content_pad)
-        list_rect = pygame.Rect(right_x, form_y, right_w, panel_h - form_y - content_pad)
-
-        pygame.draw.rect(surface, BLACK, list_rect)
-        pygame.draw.rect(surface, WHITE, list_rect, 1)
-        list_inner = list_rect.inflate(-12, -12)
-
-        add_w, add_h = 90, 26
-        add_rect = pygame.Rect(list_rect.right - add_w - 4, list_rect.y - add_h - 6, add_w, add_h)
-        pygame.draw.rect(surface, (0, 130, 0), add_rect)
-        pygame.draw.rect(surface, WHITE, add_rect, 1)
-        draw_text(surface, "ADICIONAR", FONTS["xs"], WHITE, add_rect.center, center=True)
-        INVENTORY_STATE["add_rect"] = add_rect
-
-        items = INVENTORY_STATE.get("items", [])
-        view_index = INVENTORY_STATE.get("view_item_index")
-        category_filter = INVENTORY_STATE.get("category_filter")
-        if view_index is not None:
-            if not (0 <= view_index < len(items)):
-                view_index = None
-                INVENTORY_STATE["view_item_index"] = None
-            elif category_filter:
-                item_cat = (items[view_index].get("category") or "").strip().lower()
-                if item_cat != category_filter.strip().lower():
-                    view_index = None
-                    INVENTORY_STATE["view_item_index"] = None
-        mode = "form" if INVENTORY_STATE.get("show_form") else ("view" if view_index is not None else "empty")
-
-        if mode == "form":
-            pygame.draw.rect(surface, BLACK, form_rect)
-            pygame.draw.rect(surface, WHITE, form_rect, 1)
-            form_state = INVENTORY_STATE["form"]
-            form_state["rects"] = {}
-
-            inner_pad = 12
-            img_size = 120
-            img_rect = pygame.Rect(form_rect.x + inner_pad, form_rect.y + inner_pad, img_size, img_size)
-            draw_image_field(img_rect)
-
-            name_rect = pygame.Rect(
-                img_rect.right + 12,
-                img_rect.y,
-                form_rect.right - inner_pad - (img_rect.right + 12),
-                32,
-            )
-            draw_form_text("name", name_rect, "Nome do item*")
-
-            details_gap = 8
-            col_area = form_rect.right - inner_pad - (img_rect.right + 12)
-            col_w = (col_area - details_gap) // 2
-            row_h = 30
-            rows = [
-                ("category", "Categoria", 0, 0, False, False),
-                ("space", "Espaco", 0, 1, False, False),
-                ("tipo", "Tipo", 1, 0, False, False),
-                ("alcance", "Alcance", 1, 1, False, False),
-                ("empunhadura", "Empunhadura", 2, 0, False, False),
-                ("dano", "Dano", 2, 1, False, False),
-                ("localizacao", "Localizacao", 3, 0, True, True),
-            ]
-            base_y = name_rect.bottom + 16
-            details_bottom = base_y
-            for field, label, row_idx, col_idx, is_text, full_width in rows:
-                width = col_w * 2 + details_gap if full_width else col_w
-                x = img_rect.right + 12 if full_width else img_rect.right + 12 + col_idx * (col_w + details_gap)
-                y_row = base_y + row_idx * (row_h + 12)
-                rect = pygame.Rect(x, y_row, width, row_h)
-                if field in FORM_DROPDOWN_OPTIONS and not is_text:
-                    draw_form_dropdown(field, rect, label)
-                else:
-                    draw_form_text(field, rect, label)
-                details_bottom = max(details_bottom, rect.bottom)
-
-            desc_rect = pygame.Rect(
-                form_rect.x + inner_pad,
-                details_bottom + 12,
-                form_rect.width - inner_pad * 2,
-                150,
-            )
-            draw_multiline_box(desc_rect, "Descricao*", "descricao")
-
-            info1_rect = pygame.Rect(desc_rect.x, desc_rect.bottom + 12, desc_rect.width, 70)
-            draw_multiline_box(info1_rect, "Info adicional 1", "info1", bold=True)
-
-            info2_rect = pygame.Rect(info1_rect.x, info1_rect.bottom + 8, info1_rect.width, 70)
-            draw_multiline_box(info2_rect, "Info adicional 2", "info2", bold=True)
-
-            btn_h = 32
-            btn_y = info2_rect.bottom + 14
-            if btn_y + btn_h + inner_pad > form_rect.bottom:
-                btn_y = form_rect.bottom - inner_pad - btn_h
-            btn_gap = 12
-            btn_w = (form_rect.width - inner_pad * 2 - btn_gap) // 2
-            save_rect = pygame.Rect(form_rect.x + inner_pad, btn_y, btn_w, btn_h)
-            cancel_rect = pygame.Rect(save_rect.right + btn_gap, btn_y, btn_w, btn_h)
-            pygame.draw.rect(surface, GREEN, save_rect)
-            pygame.draw.rect(surface, WHITE, save_rect, 1)
-            draw_text(surface, "SALVAR", FONTS["sm"], BLACK, save_rect.center, center=True)
-            pygame.draw.rect(surface, RED, cancel_rect)
-            pygame.draw.rect(surface, WHITE, cancel_rect, 1)
-            draw_text(surface, "CANCELAR", FONTS["sm"], BLACK, cancel_rect.center, center=True)
-            INVENTORY_STATE["form_buttons"] = {"save": save_rect, "cancel": cancel_rect}
-            INVENTORY_STATE["summary_buttons"] = {}
-            INVENTORY_STATE["view_item_index"] = None
-            error_msg = INVENTORY_STATE.get("form_error")
-            if error_msg:
-                draw_text(surface, error_msg, FONTS["xs"], RED, (form_rect.x + inner_pad, btn_y - 18))
-        elif mode == "view":
-            INVENTORY_STATE["form"]["rects"] = {}
-            INVENTORY_STATE["form_buttons"] = {}
-            INVENTORY_STATE["form_dropdown"] = None
-            pygame.draw.rect(surface, BLACK, form_rect)
-            pygame.draw.rect(surface, WHITE, form_rect, 1)
-            item = items[view_index]
-
-            inner_pad = 12
-            img_size = 120
-            img_rect = pygame.Rect(form_rect.x + inner_pad, form_rect.y + inner_pad, img_size, img_size)
-            draw_summary_image(img_rect, item.get("image_surface"))
-
-            name_rect = pygame.Rect(
-                img_rect.right + 12,
-                img_rect.y,
-                form_rect.right - inner_pad - (img_rect.right + 12),
-                32,
-            )
-            draw_summary_field(name_rect, "Nome do item*", item.get("name"))
-
-            details_gap = 8
-            col_area = form_rect.right - inner_pad - (img_rect.right + 12)
-            col_w = (col_area - details_gap) // 2
-            row_h = 30
-            detail_values = [
-                ("Categoria", item.get("category"), False),
-                ("Espaco", item.get("space"), False),
-                ("Tipo", item.get("tipo"), False),
-                ("Alcance", item.get("alcance"), False),
-                ("Empunhadura", item.get("empunhadura"), False),
-                ("Dano", item.get("dano"), False),
-                ("Localizacao", item.get("localizacao"), True),
-            ]
-            base_y = name_rect.bottom + 16
-            row_idx = 0
-            col_idx = 0
-            details_bottom = base_y
-            for label, value, full_width in detail_values:
-                width = col_w * 2 + details_gap if full_width else col_w
-                x = img_rect.right + 12 if full_width else img_rect.right + 12 + col_idx * (col_w + details_gap)
-                y_row = base_y + row_idx * (row_h + 12)
-                rect = pygame.Rect(x, y_row, width, row_h)
-                draw_summary_field(rect, label, value)
-                details_bottom = max(details_bottom, rect.bottom)
-                if full_width:
-                    row_idx += 1
-                    col_idx = 0
-                else:
-                    if col_idx == 0:
-                        col_idx = 1
-                    else:
-                        col_idx = 0
-                        row_idx += 1
-
-            desc_rect = pygame.Rect(
-                form_rect.x + inner_pad,
-                details_bottom + 12,
-                form_rect.width - inner_pad * 2,
-                150,
-            )
-            draw_summary_field(desc_rect, "Descricao", item.get("descricao"), multiline=True)
-
-            info1_rect = pygame.Rect(desc_rect.x, desc_rect.bottom + 12, desc_rect.width, 70)
-            draw_summary_field(info1_rect, "Info adicional 1", item.get("info1"), multiline=True, bold=True)
-
-            info2_rect = pygame.Rect(info1_rect.x, info1_rect.bottom + 8, info1_rect.width, 70)
-            draw_summary_field(info2_rect, "Info adicional 2", item.get("info2"), multiline=True, bold=True)
-
-            btn_h = 32
-            btn_y = info2_rect.bottom + 14
-            if btn_y + btn_h + inner_pad > form_rect.bottom:
-                btn_y = form_rect.bottom - inner_pad - btn_h
-            btn_gap = 12
-            btn_w = (form_rect.width - inner_pad * 2 - btn_gap * 2) // 3
-            close_rect = pygame.Rect(form_rect.x + inner_pad, btn_y, btn_w, btn_h)
-            edit_rect = pygame.Rect(close_rect.right + btn_gap, btn_y, btn_w, btn_h)
-            remove_rect = pygame.Rect(edit_rect.right + btn_gap, btn_y, btn_w, btn_h)
-            pygame.draw.rect(surface, GRAY_50, close_rect)
-            pygame.draw.rect(surface, WHITE, close_rect, 1)
-            draw_text(surface, "FECHAR", FONTS["sm"], BLACK, close_rect.center, center=True)
-            pygame.draw.rect(surface, ORANGE, edit_rect)
-            pygame.draw.rect(surface, WHITE, edit_rect, 1)
-            draw_text(surface, "EDITAR", FONTS["sm"], BLACK, edit_rect.center, center=True)
-            pygame.draw.rect(surface, RED, remove_rect)
-            pygame.draw.rect(surface, WHITE, remove_rect, 1)
-            draw_text(surface, "REMOVER", FONTS["sm"], BLACK, remove_rect.center, center=True)
-            INVENTORY_STATE["summary_buttons"] = {
-                "close": close_rect,
-                "edit": edit_rect,
-                "remove": remove_rect,
-                "index": view_index,
-            }
-        else:
-            INVENTORY_STATE["form"]["rects"] = {}
-            INVENTORY_STATE["form_buttons"] = {}
-            INVENTORY_STATE["summary_buttons"] = {}
-            pygame.draw.rect(surface, GRAY_30, form_rect, 1)
-            draw_text(surface, "Selecione um item ou clique em ADICIONAR", FONTS["xs"], WHITE, form_rect.center, center=True)
-            INVENTORY_STATE["form_dropdown"] = None
-
-        tags = ["Armas", "municao", "Protecao", "Magikos", "Coletaveis", "Itens chave", "componentes"]
-        tag_h = 24
-        gap = 8
-        cols = 3
-        btn_w = max(max(FONTS["xs"].size(tag)[0] + 20 for tag in tags), 96)
-        INVENTORY_STATE["filter_buttons"] = []
-        active_filter = INVENTORY_STATE.get("category_filter")
-        for i, tag in enumerate(tags):
-            row = i // cols
-            col = i % cols
-            tx = list_inner.x + col * (btn_w + gap)
-            ty = list_inner.y + row * (tag_h + gap)
-            rect = pygame.Rect(tx, ty, btn_w, tag_h)
-            is_active = active_filter == tag
-            fill_color = GRAY_70 if is_active else GRAY_50
-            border_color = ORANGE if is_active else WHITE
-            pygame.draw.rect(surface, fill_color, rect)
-            pygame.draw.rect(surface, border_color, rect, 2 if is_active else 1)
-            draw_text(surface, tag, FONTS["xs"], WHITE, rect.center, center=True)
-            INVENTORY_STATE["filter_buttons"].append((tag, rect))
-
-        rows_count = (len(tags) + cols - 1) // cols
-        table_rect = pygame.Rect(
-            list_inner.x,
-            list_inner.y + rows_count * (tag_h + gap) + 6,
-            list_inner.width,
-            list_inner.height - rows_count * (tag_h + gap) - 10,
-        )
-
-        dropdown = INVENTORY_STATE.get("dropdown")
-        if dropdown and dropdown.get("type") == "limit":
-            idx = dropdown.get("index")
-            if idx is not None and idx < len(INVENTORY_STATE["limit_rects"]):
-                base_rect = INVENTORY_STATE["limit_rects"][idx]
-                opt_w = base_rect.width + 6
-                opt_h = 22
-                opt_pad = 2
-                opt_x = base_rect.x
-                opt_y = base_rect.bottom + 4
-                dropdown_rects = []
-                for i in range(1, 6):
-                    r = pygame.Rect(opt_x, opt_y + (i - 1) * (opt_h + opt_pad), opt_w, opt_h)
-                    dropdown_rects.append((i, r))
-                    pygame.draw.rect(surface, GRAY_50, r)
-                    pygame.draw.rect(surface, WHITE, r, 1)
-                    draw_text(surface, str(i), FONTS["sm"], WHITE, r.center, center=True)
-                INVENTORY_STATE["dropdown"]["options"] = dropdown_rects
-
-        header_h = 30
-        pygame.draw.rect(surface, GRAY_30, (table_rect.x, table_rect.y, table_rect.width, header_h))
-        pygame.draw.rect(surface, WHITE, (table_rect.x, table_rect.y, table_rect.width, header_h), 1)
-        col_split = table_rect.x + 90
-        pygame.draw.line(surface, WHITE, (col_split, table_rect.y), (col_split, table_rect.y + header_h))
-        draw_text(surface, "imagem do item*", FONTS["xs"], WHITE, (table_rect.x + 6, table_rect.y + 8))
-        draw_text(surface, "Nome do item*", FONTS["xs"], WHITE, (col_split + 6, table_rect.y + 8))
-
-        INVENTORY_STATE["item_rows"] = []
-        row_h = 60
-        y_row = table_rect.y + header_h
-        filtered_items = filter_inventory_items()
-        row_index = 0
-        available_rows = int((table_rect.height - header_h) // row_h)
-        while row_index < available_rows and y_row + row_h <= table_rect.bottom:
-            row_rect = pygame.Rect(table_rect.x, y_row, table_rect.width, row_h)
-            pygame.draw.rect(surface, BLACK, row_rect)
-            pygame.draw.rect(surface, WHITE, row_rect, 1)
-            pygame.draw.line(surface, WHITE, (col_split, y_row), (col_split, y_row + row_h))
-
-            if row_index < len(filtered_items):
-                item_index, item = filtered_items[row_index]
-                if INVENTORY_STATE.get("view_item_index") == item_index:
-                    pygame.draw.rect(surface, GRAY_50, row_rect, 2)
-                img = item.get("image_surface")
-                if img:
-                    thumb_w = col_split - table_rect.x - 12
-                    thumb_h = row_h - 12
-                    thumb_w = max(10, thumb_w)
-                    thumb_h = max(10, thumb_h)
-                    thumb = pygame.transform.smoothscale(img, (thumb_w, thumb_h))
-                    thumb_rect = thumb.get_rect()
-                    thumb_rect.center = (table_rect.x + (col_split - table_rect.x) // 2, y_row + row_h // 2)
-                    surface.blit(thumb, thumb_rect)
-                else:
-                    placeholder_rect = pygame.Rect(table_rect.x + 8, y_row + 8, col_split - table_rect.x - 16, row_h - 16)
-                    pygame.draw.rect(surface, GRAY_30, placeholder_rect, 1)
-                    draw_text(surface, "sem imagem", FONTS["xs"], GRAY_70, placeholder_rect.center, center=True)
-
-                name = item.get("name", "--") or "--"
-                draw_text(surface, name, FONTS["sm_b"], WHITE, (col_split + 8, y_row + 6))
-                meta_parts = []
-                if item.get("category"):
-                    meta_parts.append(item["category"])
-                if item.get("dano"):
-                    meta_parts.append(item["dano"])
-                if item.get("space"):
-                    meta_parts.append(f"Espaco {item['space']}")
-                if item.get("tipo"):
-                    meta_parts.append(f"Tipo {item['tipo']}")
-                meta = " | ".join(meta_parts) if meta_parts else "--"
-                draw_text(surface, meta, FONTS["xs"], GRAY_70, (col_split + 8, y_row + 28))
-                roll_btn_rect = None
-                if item.get("descricao"):
-                    desc_preview = item["descricao"].strip().split("\n")[0]
-                    draw_text(surface, desc_preview[:80], FONTS["xs"], GRAY_70, (col_split + 8, y_row + 44))
-                dmg_info = parse_damage_die(item.get("dano"))
-                if dmg_info:
-                    btn_w = 64
-                    btn_h = 22
-                    roll_btn_rect = pygame.Rect(row_rect.right - btn_w - 8, y_row + row_h - btn_h - 6, btn_w, btn_h)
-                    pygame.draw.rect(surface, GRAY_50, roll_btn_rect)
-                    pygame.draw.rect(surface, WHITE, roll_btn_rect, 1)
-                    draw_text(surface, "DANO", FONTS["xs"], WHITE, roll_btn_rect.center, center=True)
-                INVENTORY_STATE["item_rows"].append(
-                    {"index": item_index, "row_rect": row_rect, "roll_rect": roll_btn_rect}
-                )
-            y_row += row_h
-            row_index += 1
-
-        while y_row + row_h <= table_rect.bottom:
-            pygame.draw.rect(surface, BLACK, (table_rect.x, y_row, table_rect.width, row_h))
-            pygame.draw.rect(surface, WHITE, (table_rect.x, y_row, table_rect.width, row_h), 1)
-            pygame.draw.line(surface, WHITE, (col_split, y_row), (col_split, y_row + row_h))
-            y_row += row_h
-
-        form_dropdown = INVENTORY_STATE.get("form_dropdown")
-        if form_dropdown and INVENTORY_STATE.get("show_form"):
-            field = form_dropdown.get("field")
-            base_rect = INVENTORY_STATE["form"].get("rects", {}).get(field)
-            options = FORM_DROPDOWN_OPTIONS.get(field, [])
-            if base_rect and options:
-                opt_h = 24
-                opt_pad = 3
-                opt_rects = []
-                drop_height = len(options) * (opt_h + opt_pad)
-                drop_y = base_rect.bottom + 4
-                max_y = form_rect.bottom - 10
-                if drop_y + drop_height > max_y:
-                    drop_y = base_rect.top - drop_height - 4
-                for idx_opt, opt in enumerate(options):
-                    r = pygame.Rect(base_rect.x, drop_y + idx_opt * (opt_h + opt_pad), base_rect.width, opt_h)
-                    pygame.draw.rect(surface, GRAY_50, r)
-                    pygame.draw.rect(surface, WHITE, r, 1)
-                    draw_text(surface, opt, FONTS["sm"], WHITE, (r.x + 6, r.y + 4))
-                    opt_rects.append((opt, r))
-                INVENTORY_STATE["form_dropdown"]["rects"] = opt_rects
-            else:
-                INVENTORY_STATE["form_dropdown"] = None
+    active_tab = SIDE_PANEL_STATE["active_tab"]
+    if active_tab == "HABILIDADES":
+        sync_attrs_to_habilidades()
+        rects = HW.draw_habilidades_panel(EMBED_STATE["hab_surf"], HW.HABILIDADES_STATE)
+        EMBED_STATE["hab_rects"] = rects
+        scaled = pygame.transform.smoothscale(EMBED_STATE["hab_surf"], content_rect.size)
+        surface.blit(scaled, content_rect)
+        SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
+    elif active_tab == "ANOTACOES":
+        rects = AW.draw_notes_panel(EMBED_STATE["notes_surf"], AW.NOTES_STATE)
+        EMBED_STATE["notes_rects"] = rects
+        scaled = pygame.transform.smoothscale(EMBED_STATE["notes_surf"], content_rect.size)
+        surface.blit(scaled, content_rect)
+        SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
     else:
-        INVENTORY_STATE["filter_buttons"] = []
-        INVENTORY_STATE["form_dropdown"] = None
-        INVENTORY_STATE["form"]["rects"] = {}
-        placeholder_rect = pygame.Rect(panel_x + content_pad, content_y + 10, panel_w - content_pad * 2, panel_h - (content_y + 20))
-        INVENTORY_STATE["embed_rect"] = placeholder_rect
-        pygame.draw.rect(surface, BLACK, placeholder_rect)
-        pygame.draw.rect(surface, WHITE, placeholder_rect, 1)
-        msg = None
-        if INVENTORY_STATE["active_tab"] == "HABILIDADES":
-            sync_attrs_to_habilidades()
-            rects = HW.draw_habilidades_panel(EMBED_STATE["hab_surf"], HW.HABILIDADES_STATE)
-            EMBED_STATE["hab_rects"] = rects
-            scaled = pygame.transform.smoothscale(EMBED_STATE["hab_surf"], placeholder_rect.size)
-            surface.blit(scaled, placeholder_rect)
-        elif INVENTORY_STATE["active_tab"] == "ANOTACOES":
-            rects = AW.draw_notes_panel(EMBED_STATE["notes_surf"], AW.NOTES_STATE)
-            EMBED_STATE["notes_rects"] = rects
-            scaled = pygame.transform.smoothscale(EMBED_STATE["notes_surf"], placeholder_rect.size)
-            surface.blit(scaled, placeholder_rect)
-        else:
-            msg = f"{INVENTORY_STATE['active_tab']} em construcao"
-        if msg:
-            draw_text(surface, msg, FONTS["md"], WHITE, placeholder_rect.center, center=True)
+        msg = "Painel GERAL em construcao" if active_tab == "GERAL" else "Inventario em construcao"
+        draw_text(surface, msg, FONTS["md"], WHITE, content_rect.center, center=True)
 
 def draw_skills_panel(surface):
     panel_x = 14
@@ -2091,10 +1317,6 @@ def main():
     EFFORT_STATE["buffers"]["total"] = str(EFFORT_STATE["total"])
     EFFORT_STATE["buffers"]["bonus"] = "0"
     EFFORT_STATE["focus"] = None
-    INVENTORY_STATE["limit_values"] = [0, 0, 0, 0, 0]
-    INVENTORY_STATE["total_values"] = [0, 0, 0, 0, 0]
-    INVENTORY_STATE["dropdown"] = None
-    INVENTORY_STATE["show_form"] = False
     sync_habilidades_training_to_skills()
     sync_attrs_to_habilidades()
 
@@ -2122,11 +1344,16 @@ def main():
                 running = False
             elif event.type == pygame.VIDEORESIZE:
                 WINDOW = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+            elif event.type == pygame.TEXTINPUT:
+                current_tab = SIDE_PANEL_STATE.get("active_tab")
+                if current_tab == "ANOTACOES":
+                    AW.handle_text_input(event, AW.NOTES_STATE)
+                    continue
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
                     continue
-                current_tab = INVENTORY_STATE.get("active_tab")
+                current_tab = SIDE_PANEL_STATE.get("active_tab")
                 if current_tab == "HABILIDADES":
                     handled = HW.handle_key(event, HW.HABILIDADES_STATE)
                     if handled:
@@ -2159,26 +1386,6 @@ def main():
                     elif event.unicode and event.unicode.isprintable():
                         note_insert_text(field, event.unicode)
                     continue
-                form_focus = INVENTORY_STATE["form"].get("focus") if INVENTORY_STATE.get("show_form") else None
-                if form_focus:
-                    text_fields = FORM_TEXT_FIELDS.union(FORM_MULTILINE_FIELDS)
-                    if event.key == pygame.K_ESCAPE:
-                        INVENTORY_STATE["form"]["focus"] = None
-                    elif event.key == pygame.K_BACKSPACE:
-                        form_backspace(form_focus)
-                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                        if form_focus in FORM_MULTILINE_FIELDS:
-                            form_insert_text(form_focus, "\n")
-                        else:
-                            INVENTORY_STATE["form"]["focus"] = None
-                    elif event.key == pygame.K_TAB:
-                        pass
-                    elif event.unicode and event.unicode.isprintable() and form_focus in text_fields:
-                        if event.unicode not in ("\r", "\n"):
-                            form_insert_text(form_focus, event.unicode)
-                        elif event.unicode == "\n" and form_focus in FORM_MULTILINE_FIELDS:
-                            form_insert_text(form_focus, "\n")
-                    continue
                 if EFFORT_STATE["focus"]:
                     field = EFFORT_STATE["focus"]
                     if event.key == pygame.K_RETURN:
@@ -2194,54 +1401,39 @@ def main():
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos_base = window_to_canvas(event.pos, scale, offset)
                 if pos_base:
-                    current_tab = INVENTORY_STATE.get("active_tab")
-                    embed_rect = INVENTORY_STATE.get("embed_rect")
-                    if current_tab in ("HABILIDADES", "ANOTACOES") and embed_rect and embed_rect.collidepoint(pos_base):
-                        if current_tab == "HABILIDADES" and EMBED_STATE.get("hab_rects"):
-                            rel_x = (pos_base[0] - embed_rect.x) * HW.WIDTH / embed_rect.width
-                            rel_y = (pos_base[1] - embed_rect.y) * HW.HEIGHT / embed_rect.height
-                            HW.handle_mouse((rel_x, rel_y), EMBED_STATE["hab_rects"], HW.HABILIDADES_STATE)
-                            sync_habilidades_training_to_skills()
-                        elif current_tab == "ANOTACOES" and EMBED_STATE.get("notes_rects"):
-                            rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
-                            rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
-                            AW.handle_mouse((rel_x, rel_y), EMBED_STATE["notes_rects"], AW.NOTES_STATE)
+                    for label, rect in SIDE_PANEL_STATE.get("tab_rects", []):
+                        if rect.collidepoint(pos_base):
+                            SIDE_PANEL_STATE["active_tab"] = label
+                            break
+                    current_tab = SIDE_PANEL_STATE.get("active_tab")
+                    embed_rect = SIDE_PANEL_STATE.get("embed_rect")
+                    if (
+                        current_tab == "HABILIDADES"
+                        and embed_rect
+                        and embed_rect.collidepoint(pos_base)
+                        and EMBED_STATE.get("hab_rects")
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * HW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * HW.HEIGHT / embed_rect.height
+                        HW.handle_mouse((rel_x, rel_y), EMBED_STATE["hab_rects"], HW.HABILIDADES_STATE)
+                        sync_habilidades_training_to_skills()
                         continue
-                    # Dropdown de inventário: clique em opções
-                    if INVENTORY_STATE.get("dropdown") and INVENTORY_STATE["dropdown"].get("options"):
-                        handled_dropdown = False
-                        for val, rect in INVENTORY_STATE["dropdown"]["options"]:
-                            if rect.collidepoint(pos_base):
-                                idx = INVENTORY_STATE["dropdown"].get("index")
-                                if idx is not None and 0 <= idx < len(INVENTORY_STATE["limit_values"]):
-                                    INVENTORY_STATE["limit_values"][idx] = val
-                                INVENTORY_STATE["dropdown"] = None
-                                handled_dropdown = True
-                                break
-                        if not handled_dropdown:
-                            # Fechar dropdown se clicou fora dele
-                            INVENTORY_STATE["dropdown"] = None
-                    form_dropdown = INVENTORY_STATE.get("form_dropdown")
-                    if form_dropdown and form_dropdown.get("rects"):
-                        handled_form_dropdown = False
-                        for val, rect in form_dropdown["rects"]:
-                            if rect.collidepoint(pos_base):
-                                field = form_dropdown.get("field")
-                                if field:
-                                    INVENTORY_STATE["form"][field] = val
-                                INVENTORY_STATE["form_dropdown"] = None
-                                handled_form_dropdown = True
-                                break
-                        if handled_form_dropdown:
-                            continue
-                        INVENTORY_STATE["form_dropdown"] = None
+                    if (
+                        current_tab == "ANOTACOES"
+                        and embed_rect
+                        and embed_rect.collidepoint(pos_base)
+                        and EMBED_STATE.get("notes_rects")
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
+                        AW.handle_mouse((rel_x, rel_y), EMBED_STATE["notes_rects"], AW.NOTES_STATE)
+                        continue
 
                     prev_focus = EFFORT_STATE["focus"]
                     if prev_focus:
                         apply_effort_buffer(prev_focus)
                     EFFORT_STATE["focus"] = None
                     NOTE_STATE["focus"] = None
-                    INVENTORY_STATE["form"]["focus"] = None
                     for attr in ATTRIBUTES:
                         old_val = attr["value"]
                         if attr.get("minus_rect") and attr["minus_rect"].collidepoint(pos_base):
@@ -2326,139 +1518,25 @@ def main():
                             if rect.collidepoint(pos_base):
                                 apply_effort_delta(val)
                                 break
-                    # Inventário: caixas de limite abrem dropdown
-                    for idx, rect in enumerate(INVENTORY_STATE["limit_rects"]):
-                        if rect.collidepoint(pos_base):
-                            INVENTORY_STATE["dropdown"] = {"type": "limit", "index": idx, "options": []}
-                            break
-                    # Inventario: campos do formulario
-                    form_handled = False
-                    if INVENTORY_STATE.get("show_form"):
-                        form_rects = INVENTORY_STATE["form"].get("rects", {})
-                        if form_rects:
-                            img_rect = form_rects.get("image")
-                            if img_rect and img_rect.collidepoint(pos_base):
-                                image_path, image_surface = select_inventory_image()
-                                if image_path and image_surface:
-                                    INVENTORY_STATE["form"]["image_path"] = image_path
-                                    INVENTORY_STATE["form"]["image_surface"] = image_surface
-                                form_handled = True
-                            else:
-                                text_fields = FORM_TEXT_FIELDS.union(FORM_MULTILINE_FIELDS)
-                                for field in text_fields:
-                                    rect = form_rects.get(field)
-                                    if rect and rect.collidepoint(pos_base):
-                                        INVENTORY_STATE["form"]["focus"] = field
-                                        INVENTORY_STATE["form_dropdown"] = None
-                                        form_handled = True
-                                        break
-                            if not form_handled:
-                                for field in FORM_DROPDOWN_OPTIONS.keys():
-                                    rect = form_rects.get(field)
-                                    if rect and rect.collidepoint(pos_base):
-                                        INVENTORY_STATE["form_dropdown"] = {"field": field, "rects": []}
-                                        form_handled = True
-                                        break
-                    if INVENTORY_STATE.get("show_form") and not form_handled:
-                        buttons = INVENTORY_STATE.get("form_buttons", {})
-                        save_rect = buttons.get("save")
-                        cancel_rect = buttons.get("cancel")
-                        if save_rect and save_rect.collidepoint(pos_base):
-                            add_inventory_item_from_form()
-                            form_handled = True
-                        elif cancel_rect and cancel_rect.collidepoint(pos_base):
-                            cancel_inventory_form()
-                            form_handled = True
-                    if (
-                        not INVENTORY_STATE.get("show_form")
-                        and INVENTORY_STATE.get("view_item_index") is not None
-                        and not form_handled
-                    ):
-                        summary_buttons = INVENTORY_STATE.get("summary_buttons", {})
-                        close_rect = summary_buttons.get("close")
-                        edit_rect = summary_buttons.get("edit")
-                        remove_rect = summary_buttons.get("remove")
-                        idx_summary = summary_buttons.get("index")
-                        if close_rect and close_rect.collidepoint(pos_base):
-                            close_inventory_summary()
-                            form_handled = True
-                        elif edit_rect and edit_rect.collidepoint(pos_base):
-                            idx = idx_summary
-                            items = INVENTORY_STATE.get("items", [])
-                            if idx is not None and 0 <= idx < len(items):
-                                item = items[idx]
-                                form = INVENTORY_STATE["form"]
-                                for key in ["name", "category", "space", "tipo", "alcance", "empunhadura", "dano", "localizacao", "descricao", "info1", "info2"]:
-                                    form[key] = item.get(key, "")
-                                form["image_path"] = item.get("image_path", "")
-                                form["image_surface"] = item.get("image_surface")
-                                form["rects"] = {}
-                                form["focus"] = None
-                                INVENTORY_STATE["editing_index"] = idx
-                                INVENTORY_STATE["show_form"] = True
-                                INVENTORY_STATE["view_item_index"] = None
-                                INVENTORY_STATE["form_dropdown"] = None
-                                INVENTORY_STATE["form_error"] = ""
-                                INVENTORY_STATE["summary_buttons"] = {}
-                                form_handled = True
-                        elif remove_rect and remove_rect.collidepoint(pos_base):
-                            if idx_summary is not None:
-                                remove_inventory_item(idx_summary)
-                            form_handled = True
-                    if form_handled:
-                        continue
-                    filter_clicked = False
-                    if INVENTORY_STATE.get("active_tab") == "INVENTARIO":
-                        for tag, rect in INVENTORY_STATE.get("filter_buttons", []):
-                            if rect.collidepoint(pos_base):
-                                current = INVENTORY_STATE.get("category_filter")
-                                INVENTORY_STATE["category_filter"] = None if current == tag else tag
-                                INVENTORY_STATE["view_item_index"] = None
-                                INVENTORY_STATE["summary_buttons"] = {}
-                                filter_clicked = True
-                                break
-                    if filter_clicked:
-                        continue
-                    clicked_row = None
-                    handled_row_action = False
-                    for row_info in INVENTORY_STATE.get("item_rows", []):
-                        roll_rect = row_info.get("roll_rect")
-                        if roll_rect and roll_rect.collidepoint(pos_base):
-                            roll_inventory_item_damage(row_info.get("index"))
-                            handled_row_action = True
-                            break
-                        row_rect = row_info.get("row_rect")
-                        if row_rect and row_rect.collidepoint(pos_base):
-                            clicked_row = row_info.get("index")
-                            break
-                    if handled_row_action:
-                        continue
-                    if clicked_row is not None:
-                        INVENTORY_STATE["view_item_index"] = clicked_row
-                        INVENTORY_STATE["show_form"] = False
-                        INVENTORY_STATE["form_dropdown"] = None
-                        INVENTORY_STATE["summary_buttons"] = {}
-                        continue
-                    # Inventário: abas
-                    for label, rect in INVENTORY_STATE["tab_rects"]:
-                        if rect.collidepoint(pos_base):
-                            INVENTORY_STATE["active_tab"] = label
-                            INVENTORY_STATE["dropdown"] = None
-                            INVENTORY_STATE["show_form"] = False
-                            INVENTORY_STATE["form_dropdown"] = None
-                            INVENTORY_STATE["view_item_index"] = None
-                            INVENTORY_STATE["summary_buttons"] = {}
-                            break
-                    # Inventário: botão adicionar abre formulário da esquerda
-                    add_rect = INVENTORY_STATE.get("add_rect")
-                    if add_rect and add_rect.collidepoint(pos_base):
-                        if not INVENTORY_STATE.get("show_form"):
-                            reset_inventory_form()
-                            close_inventory_summary()
-                        INVENTORY_STATE["show_form"] = True
             elif event.type == pygame.MOUSEWHEEL:
                 mouse_pos = getattr(event, "pos", pygame.mouse.get_pos())
                 pos_base = window_to_canvas(mouse_pos, scale, offset)
+                handled_wheel = False
+                current_tab = SIDE_PANEL_STATE.get("active_tab")
+                if current_tab == "ANOTACOES":
+                    embed_rect = SIDE_PANEL_STATE.get("embed_rect")
+                    rects = EMBED_STATE.get("notes_rects")
+                    if (
+                        pos_base
+                        and embed_rect
+                        and rects
+                        and embed_rect.collidepoint(pos_base)
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
+                        handled_wheel = AW.handle_mousewheel(event.y, rects, AW.NOTES_STATE, (rel_x, rel_y))
+                if handled_wheel:
+                    continue
                 if pos_base and "body" in NOTE_STATE["rects"]:
                     body_rect = NOTE_STATE["rects"]["body"]
                     if body_rect.collidepoint(pos_base):

@@ -3,15 +3,17 @@ import math
 import pygame
 
 # Dimensoes base
-WIDTH, HEIGHT = 1280, 900
+WIDTH, HEIGHT = 755, 700
 FPS = 60
 
 # Cores
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GRAY_20 = (35, 35, 35)
+GRAY_30 = (55, 55, 55)
 GRAY_40 = (70, 70, 70)
 GRAY_60 = (110, 110, 110)
+GRAY_70 = (150, 150, 150)
 GRAY_80 = (170, 170, 170)
 PURPLE = (180, 0, 200)
 ORANGE = (240, 140, 0)
@@ -33,7 +35,7 @@ FONTS = {
     "lg": pygame.font.SysFont("arial", 28, bold=True),
 }
 
-DEFAULT_STYLE = {"bold": False, "italic": False, "underline": False}
+DEFAULT_STYLE = {"bold": False, "italic": False, "underline": False, "align": "left"}
 STYLE_FONT_CACHE = {}
 
 
@@ -101,6 +103,10 @@ NOTES_STATE = {
     "rects": {"fields": {}, "buttons": {}, "list_rows": []},
     "style_flags": {"bold": False, "italic": False, "underline": False},
     "body_styles": [],
+    "body_scroll": 0,
+    "body_scroll_max": 0,
+    "number_sequence": None,
+    "align_mode": "left",
 }
 
 
@@ -111,6 +117,10 @@ def reset_form(state):
     state["style_flags"] = DEFAULT_STYLE.copy()
     state["focus"] = None
     state["selected"] = None
+    state["body_scroll"] = 0
+    state["body_scroll_max"] = 0
+    state["number_sequence"] = None
+    state["align_mode"] = "left"
 
 
 def ensure_filtered(state):
@@ -144,7 +154,12 @@ def insert_text(state, field, text):
         cur = max(0, min(cur, len(buf)))
         snapshot = state["style_flags"].copy()
         state["form"]["body"] = buf[:cur] + text + buf[cur:]
-        insert_styles = [snapshot for _ in text]
+        seq_align = state.get("align_mode", "left")
+        insert_styles = []
+        for ch in text:
+            entry_style = snapshot.copy()
+            entry_style["align"] = seq_align
+            insert_styles.append(entry_style)
         state["body_styles"] = styles[:cur] + insert_styles + styles[cur:]
         state["cursor"][field] = cur + len(text)
     else:
@@ -213,26 +228,30 @@ def toolbar_action(state, action):
     elif action == "bullet":
         insert_text(state, field, "\n• ")
     elif action == "number":
-        insert_text(state, field, "\n1. ")
+        if state.get("number_sequence"):
+            state["number_sequence"] = None
+        else:
+            state["number_sequence"] = 1
+            insert_text(state, field, "\n1. ")
     elif action == "align_left":
-        insert_text(state, field, "\n")
+        state["align_mode"] = "left"
     elif action == "align_center":
-        insert_text(state, field, "\n")
+        state["align_mode"] = "center"
     elif action == "align_right":
-        insert_text(state, field, "\n")
+        state["align_mode"] = "right"
 
 
-def draw_text_input(rect, label, value, focus, key, state, multiline=False, max_lines=3):
+def draw_text_input(surface, rect, label, value, focus, key, state, multiline=False, max_lines=3):
     border = ORANGE if focus == key else WHITE
-    pygame.draw.rect(WINDOW, GRAY_20, rect)
-    pygame.draw.rect(WINDOW, border, rect, 1)
-    draw_text(WINDOW, label, FONTS["sm_b"], WHITE, (rect.x, rect.y - 16))
+    pygame.draw.rect(surface, GRAY_20, rect)
+    pygame.draw.rect(surface, border, rect, 1)
+    draw_text(surface, label, FONTS["sm_b"], WHITE, (rect.x, rect.y - 16))
     inner_pad_x = 6
     if multiline:
         lines, line_starts = wrap_text_with_starts(value or "", FONTS["sm"], rect.width - inner_pad_x * 2)
         line_h = FONTS["sm"].get_height()
         for i, line in enumerate(lines[:max_lines]):
-            draw_text(WINDOW, line, FONTS["sm"], WHITE, (rect.x + inner_pad_x, rect.y + 4 + i * line_h))
+            draw_text(surface, line, FONTS["sm"], WHITE, (rect.x + inner_pad_x, rect.y + 4 + i * line_h))
         if focus == key:
             cur = state["cursor"].get(key, len(value))
             cur = max(0, min(cur, len(value)))
@@ -249,14 +268,14 @@ def draw_text_input(rect, label, value, focus, key, state, multiline=False, max_
             if (pygame.time.get_ticks() // 400) % 2 == 0:
                 pygame.draw.line(WINDOW, WHITE, (caret_x, caret_y), (caret_x, caret_y + line_h), 1)
     else:
-        draw_text(WINDOW, value or "", FONTS["sm"], WHITE, (rect.x + inner_pad_x, rect.y + 4))
+        draw_text(surface, value or "", FONTS["sm"], WHITE, (rect.x + inner_pad_x, rect.y + 4))
         if focus == key:
             cur = state["cursor"].get(key, len(value))
             cur = max(0, min(cur, len(value)))
             caret_x = rect.x + inner_pad_x + FONTS["sm"].size((value or "")[:cur])[0]
             caret_y = rect.y + 3
             if (pygame.time.get_ticks() // 400) % 2 == 0:
-                pygame.draw.line(WINDOW, WHITE, (caret_x, caret_y), (caret_x, rect.bottom - 3), 1)
+                pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, rect.bottom - 3), 1)
 
 
 def draw_toolbar(surface, rect, state):
@@ -270,9 +289,9 @@ def draw_toolbar(surface, rect, state):
         ("C", "align_center"),
         ("R", "align_right"),
     ]
-    btn_w = 36
+    btn_w = 28
     btn_h = rect.height
-    btn_gap = 4
+    btn_gap = 3
     rects = []
     for i, (label, action) in enumerate(actions):
         bx = rect.x + i * (btn_w + btn_gap)
@@ -280,6 +299,9 @@ def draw_toolbar(surface, rect, state):
         active = False
         if action in ("bold", "italic", "underline"):
             active = state["style_flags"].get(action, False)
+        elif action in ("align_left", "align_center", "align_right"):
+            mode = {"align_left": "left", "align_center": "center", "align_right": "right"}[action]
+            active = state.get("align_mode", "left") == mode
         pygame.draw.rect(surface, GRAY_40 if not active else GRAY_60, brect)
         pygame.draw.rect(surface, ORANGE if active else WHITE, brect, 1)
         draw_text(surface, label, FONTS["sm_b"], WHITE, brect.center, center=True)
@@ -308,134 +330,268 @@ def draw_notes_panel(surface, state):
     pygame.draw.rect(surface, BLACK, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
 
-    left_pad = panel_rect.x + 18
-    top_y = panel_rect.y + 16
+    content_pad = 14
+    column_gap = 16
+    usable_height = panel_rect.height - content_pad * 2
+    left_w = int((panel_rect.width - column_gap - content_pad * 2) * 0.4)
+    left_rect = pygame.Rect(panel_rect.x + content_pad, panel_rect.y + content_pad, left_w, usable_height)
+    right_rect = pygame.Rect(
+        left_rect.right + column_gap,
+        left_rect.y,
+        panel_rect.right - content_pad - (left_rect.right + column_gap),
+        usable_height,
+    )
 
-    # Search and add on left panel
-    left_w = panel_rect.width // 3
-    left_rect = pygame.Rect(left_pad, top_y, left_w, panel_rect.height - 24)
+    # Painel esquerdo (busca + lista)
     pygame.draw.rect(surface, BLACK, left_rect)
     pygame.draw.rect(surface, WHITE, left_rect, 2)
-    inner_left = left_rect.inflate(-10, -10)
+    inner_left = left_rect.inflate(-12, -12)
+    draw_text(surface, "ANOTACOES", FONTS["md"], WHITE, (inner_left.x, inner_left.y - 6))
 
-    search_rect = pygame.Rect(inner_left.x, inner_left.y, inner_left.width - 90, 26)
+    search_rect = pygame.Rect(inner_left.x, inner_left.y + 18, inner_left.width, 30)
     pygame.draw.rect(surface, GRAY_20, search_rect)
     pygame.draw.rect(surface, ORANGE if state["focus"] == "search" else WHITE, search_rect, 1)
-    draw_text(surface, "pesquisar por titulo...", FONTS["xs"], GRAY_80, (search_rect.x + 4, search_rect.y - 14))
-    draw_text(surface, state["search"], FONTS["sm"], WHITE, (search_rect.x + 4, search_rect.y + 4))
+    draw_text(surface, "Pesquisar por titulo ou assunto", FONTS["xs"], GRAY_80, (search_rect.x, search_rect.y - 14))
+    draw_text(surface, state["search"], FONTS["sm"], WHITE, (search_rect.x + 6, search_rect.y + 6))
     if state["focus"] == "search":
         cur = state["cursor"].get("search", len(state["search"]))
         cur = max(0, min(cur, len(state["search"])))
-        caret_x = search_rect.x + 4 + FONTS["sm"].size(state["search"][:cur])[0]
+        caret_x = search_rect.x + 6 + FONTS["sm"].size(state["search"][:cur])[0]
         if (pygame.time.get_ticks() // 400) % 2 == 0:
-            pygame.draw.line(surface, WHITE, (caret_x, search_rect.y + 4), (caret_x, search_rect.bottom - 4), 1)
+            pygame.draw.line(surface, WHITE, (caret_x, search_rect.y + 5), (caret_x, search_rect.bottom - 5), 1)
     rects["fields"]["search"] = search_rect
-    add_left_rect = pygame.Rect(search_rect.right + 6, search_rect.y, 80, 26)
+
+    add_left_rect = pygame.Rect(inner_left.x, search_rect.bottom + 10, inner_left.width, 32)
     pygame.draw.rect(surface, GREEN, add_left_rect)
     pygame.draw.rect(surface, WHITE, add_left_rect, 1)
-    draw_text(surface, "Adicionar", FONTS["xs"], BLACK, add_left_rect.center, center=True)
+    draw_text(surface, "Adicionar anotacao", FONTS["sm_b"], BLACK, add_left_rect.center, center=True)
     rects["buttons"]["add_left"] = add_left_rect
 
-    # List of notes
-    list_rect = pygame.Rect(inner_left.x, search_rect.bottom + 8, inner_left.width, inner_left.bottom - search_rect.bottom - 8)
+    list_rect = pygame.Rect(
+        inner_left.x,
+        add_left_rect.bottom + 14,
+        inner_left.width,
+        inner_left.bottom - add_left_rect.bottom - 14,
+    )
     pygame.draw.rect(surface, BLACK, list_rect)
     pygame.draw.rect(surface, WHITE, list_rect, 1)
     header_h = 30
+    title_split = list_rect.x + int(list_rect.width * 0.55)
     pygame.draw.rect(surface, GRAY_20, (list_rect.x, list_rect.y, list_rect.width, header_h))
     pygame.draw.rect(surface, WHITE, (list_rect.x, list_rect.y, list_rect.width, header_h), 1)
-    draw_text(surface, "Titulo da anotacao*", FONTS["sm_b"], WHITE, (list_rect.x + 6, list_rect.y + 6))
+    pygame.draw.line(surface, WHITE, (title_split, list_rect.y), (title_split, list_rect.y + header_h))
+    draw_text(surface, "Titulo", FONTS["sm_b"], WHITE, (list_rect.x + 6, list_rect.y + 6))
+    draw_text(surface, "Sobre", FONTS["sm_b"], WHITE, (title_split + 6, list_rect.y + 6))
 
     rects["list_rows"] = []
     y_row = list_rect.y + header_h
-    row_h = 60
+    row_h = 62
     ensure_filtered(state)
-    for idx_display, (idx_note, note) in enumerate(state["filtered"]):
+    for idx_note, note in state["filtered"]:
         if y_row + row_h > list_rect.bottom:
             break
         row_rect = pygame.Rect(list_rect.x, y_row, list_rect.width, row_h)
         pygame.draw.rect(surface, BLACK, row_rect)
         pygame.draw.rect(surface, WHITE, row_rect, 1)
+        pygame.draw.line(surface, WHITE, (title_split, y_row), (title_split, y_row + row_h))
         if state.get("selected") == idx_note:
             pygame.draw.rect(surface, PURPLE, row_rect, 2)
-        draw_text(surface, note.get("title", "Sem titulo"), FONTS["sm_b"], WHITE, (row_rect.x + 6, row_rect.y + 4))
-        draw_text(surface, f"Sobre: {note.get('subject','')}", FONTS["xs"], WHITE, (row_rect.x + 6, row_rect.y + 24))
+        title = note.get("title", "Sem titulo") or "Sem titulo"
+        subject = note.get("subject", "")
+        preview = (note.get("body", "") or "").strip().split("\n")[0][:60]
+        draw_text(surface, title, FONTS["sm_b"], WHITE, (row_rect.x + 6, row_rect.y + 6))
+        draw_text(surface, preview or "Sem conteudo", FONTS["xs"], GRAY_80, (row_rect.x + 6, row_rect.y + 30))
+        draw_text(surface, subject or "--", FONTS["sm"], WHITE, (title_split + 6, row_rect.y + 18))
         rects["list_rows"].append((idx_note, row_rect))
         y_row += row_h
 
-    # Right form
-    right_x = left_rect.right + 12
-    right_w = panel_rect.right - right_x - 12
-    right_rect = pygame.Rect(right_x, top_y, right_w, panel_rect.height - 24)
+    # Painel direito (formulario)
     pygame.draw.rect(surface, BLACK, right_rect)
     pygame.draw.rect(surface, WHITE, right_rect, 2)
-    inner_right = right_rect.inflate(-10, -10)
+    inner_right = right_rect.inflate(-12, -12)
 
     if state.get("show_form") or state.get("selected") is not None:
-        title_rect = pygame.Rect(inner_right.x, inner_right.y + 10, inner_right.width - 200, 32)
-        draw_text_input(title_rect, "Titulo da anotacao*", state["form"]["title"], state["focus"], "title", state, multiline=False)
+        action_block = 2 * 96 + 20
+        title_width = max(160, inner_right.width - action_block - 6)
+        title_rect = pygame.Rect(inner_right.x, inner_right.y + 6, title_width, 34)
+        draw_text_input(surface, title_rect, "Titulo da anotacao*", state["form"]["title"], state["focus"], "title", state, multiline=False)
         rects["fields"]["title"] = title_rect
 
-        btn_remove = pygame.Rect(title_rect.right + 8, title_rect.y, 90, 26)
-        btn_edit = pygame.Rect(btn_remove.right + 8, title_rect.y, 90, 26)
+        btn_remove = pygame.Rect(title_rect.right + 10, title_rect.y, 96, 30)
+        btn_edit = pygame.Rect(btn_remove.right + 10, title_rect.y, 96, 30)
         pygame.draw.rect(surface, RED, btn_remove)
         pygame.draw.rect(surface, WHITE, btn_remove, 1)
-        draw_text(surface, "Remover", FONTS["xs"], BLACK, btn_remove.center, center=True)
+        draw_text(surface, "Remover", FONTS["sm"], BLACK, btn_remove.center, center=True)
         pygame.draw.rect(surface, GREEN, btn_edit)
         pygame.draw.rect(surface, WHITE, btn_edit, 1)
         edit_label = "Adicionar" if state.get("selected") is None else "Editar"
-        draw_text(surface, edit_label, FONTS["xs"], BLACK, btn_edit.center, center=True)
+        draw_text(surface, edit_label, FONTS["sm"], BLACK, btn_edit.center, center=True)
         rects["buttons"]["remove"] = btn_remove
         rects["buttons"]["save"] = btn_edit
 
-        subject_rect = pygame.Rect(inner_right.x, title_rect.bottom + 12, inner_right.width, 32)
-        draw_text_input(subject_rect, "SOBRE*", state["form"]["subject"], state["focus"], "subject", state, multiline=False)
+        subject_rect = pygame.Rect(inner_right.x, title_rect.bottom + 12, inner_right.width, 34)
+        draw_text_input(surface, subject_rect, "SOBRE*", state["form"]["subject"], state["focus"], "subject", state, multiline=False)
         rects["fields"]["subject"] = subject_rect
 
-        toolbar_rect = pygame.Rect(inner_right.x, subject_rect.bottom + 6, 8 * 40 - 4, 26)
+        toolbar_rect = pygame.Rect(inner_right.x, subject_rect.bottom + 10, inner_right.width, 30)
         toolbar_rects = draw_toolbar(surface, toolbar_rect, state)
         rects["toolbar"] = toolbar_rects
 
-        body_rect = pygame.Rect(inner_right.x, toolbar_rect.bottom + 8, inner_right.width, inner_right.bottom - toolbar_rect.bottom - 12)
+        scrollbar_width = 12
+        body_rect = pygame.Rect(
+            inner_right.x,
+            toolbar_rect.bottom + 10,
+            inner_right.width,
+            inner_right.bottom - toolbar_rect.bottom - 12,
+        )
         border = ORANGE if state.get("focus") == "body" else WHITE
         pygame.draw.rect(surface, GRAY_20, body_rect)
         pygame.draw.rect(surface, border, body_rect, 1)
         draw_text(surface, "Conteudo da anotacao (caracteres ilimitados)", FONTS["xs"], WHITE, (body_rect.x, body_rect.y - 16))
-        # Render body with per-character styles
+        # Render body com suporte a scroll/alinhamento
         text_body = state["form"]["body"]
         styles = state.get("body_styles", [])
         default_style = DEFAULT_STYLE
-        x = body_rect.x + 4
-        y = body_rect.y + 4
-        max_w = body_rect.width - 8
-        line_h = get_font_for_style(default_style).get_height()
+        text_width = max(10, body_rect.width - 8 - scrollbar_width)
+        visible_height = body_rect.height - 8
+        scroll = max(0, min(state.get("body_scroll", 0), state.get("body_scroll_max", 0)))
         caret_pos = state["cursor"].get("body", len(text_body))
-        caret_coords = (x, y)
+        entries = []
+        line_widths = [0]
+        line_tops = [0]
+        line_heights = [get_font_for_style(default_style).get_height()]
+        current_line = 0
+        x_local = 0
+        y_local = 0
+        current_line_height = line_heights[0]
+        caret_coords_local = (0, 0)
+        caret_line = 0
+
+        def finalize_line():
+            nonlocal current_line, x_local, y_local, current_line_height
+            line_heights[current_line] = max(line_heights[current_line], current_line_height)
+            y_local += line_heights[current_line]
+            current_line += 1
+            x_local = 0
+            current_line_height = get_font_for_style(default_style).get_height()
+            line_tops.append(y_local)
+            line_heights.append(current_line_height)
+            line_widths.append(0)
+            return current_line_height
+
         for idx, ch in enumerate(text_body):
             style = styles[idx] if idx < len(styles) else default_style
             font = get_font_for_style(style)
             ch_w, ch_h = font.size(ch)
-            if ch == "\n" or x + ch_w > body_rect.x + max_w:
-                x = body_rect.x + 4
-                y += line_h
             if ch == "\n":
-                line_h = font.get_height()
                 if idx == caret_pos:
-                    caret_coords = (x, y)
+                    caret_coords_local = (x_local, y_local)
+                    caret_line = current_line
+                current_line_height = max(current_line_height, ch_h)
+                finalize_line()
                 continue
-            surface.blit(font.render(ch, True, WHITE), (x, y))
+            if x_local > 0 and x_local + ch_w > text_width:
+                finalize_line()
+            entry = {
+                "line": current_line,
+                "x": x_local,
+                "y": y_local,
+                "font": font,
+                "char": ch,
+                "w": ch_w,
+                "h": ch_h,
+                "align": style.get("align", "left"),
+            }
+            entries.append(entry)
+            line_widths[current_line] = max(line_widths[current_line], x_local + ch_w)
+            current_line_height = max(current_line_height, ch_h)
             if idx == caret_pos:
-                caret_coords = (x, y)
-            x += ch_w
-            line_h = max(line_h, ch_h)
-        # caret at end
+                caret_coords_local = (x_local, y_local)
+                caret_line = current_line
+            x_local += ch_w
+        line_heights[current_line] = max(line_heights[current_line], current_line_height)
+        content_height = line_tops[current_line] + line_heights[current_line]
         if caret_pos == len(text_body):
-            caret_coords = (x, y)
+            caret_coords_local = (x_local, y_local)
+            caret_line = current_line
+
+        offsets = []
+        for i, width in enumerate(line_widths):
+            if entries:
+                # Determine alinhamento da linha pelo primeiro caractere da linha
+                try:
+                    first_entry = next(e for e in entries if e["line"] == i)
+                    align_mode = first_entry.get("align") or "left"
+                except StopIteration:
+                    align_mode = "left"
+            else:
+                align_mode = "left"
+            if align_mode == "center":
+                offsets.append(max(0, (text_width - width) / 2))
+            elif align_mode == "right":
+                offsets.append(max(0, text_width - width))
+            else:
+                offsets.append(0)
+
+        clip_rect = pygame.Rect(
+            body_rect.x + 2,
+            body_rect.y + 2,
+            body_rect.width - scrollbar_width - 4,
+            body_rect.height - 4,
+        )
+        prev_clip = surface.get_clip()
+        surface.set_clip(clip_rect)
+        for entry in entries:
+            draw_y = body_rect.y + 4 + entry["y"] - scroll
+            if draw_y + entry["h"] < body_rect.y or draw_y > body_rect.bottom:
+                continue
+            draw_x = body_rect.x + 4 + offsets[entry["line"]] + entry["x"]
+            surface.blit(entry["font"].render(entry["char"], True, WHITE), (draw_x, draw_y))
+        surface.set_clip(prev_clip)
+        max_scroll = max(0, content_height - visible_height)
+        state["body_scroll_max"] = max_scroll
+        scroll = max(0, min(state.get("body_scroll", 0), max_scroll))
+        caret_line_height = line_heights[min(caret_line, len(line_heights) - 1)] if line_heights else get_font_for_style(default_style).get_height()
+        if state.get("focus") == "body":
+            caret_top = caret_coords_local[1]
+            caret_bottom = caret_coords_local[1] + caret_line_height
+            if caret_bottom - scroll > visible_height:
+                scroll = caret_bottom - visible_height
+            elif caret_top - scroll < 0:
+                scroll = caret_top
+            scroll = max(0, min(max_scroll, scroll))
+        state["body_scroll"] = scroll
+        caret_screen_y = body_rect.y + 4 + caret_coords_local[1] - scroll
+        caret_screen_x = body_rect.x + 4 + offsets[min(caret_line, len(offsets) - 1)] + caret_coords_local[0]
         if state.get("focus") == "body" and (pygame.time.get_ticks() // 400) % 2 == 0:
-            pygame.draw.line(surface, WHITE, caret_coords, (caret_coords[0], caret_coords[1] + line_h), 1)
+            if body_rect.y <= caret_screen_y <= body_rect.bottom:
+                pygame.draw.line(
+                    surface,
+                    WHITE,
+                    (caret_screen_x, caret_screen_y),
+                    (caret_screen_x, caret_screen_y + caret_line_height),
+                    1,
+                )
+        bar_rect = pygame.Rect(
+            body_rect.right - scrollbar_width + 2,
+            body_rect.y + 2,
+            scrollbar_width - 4,
+            body_rect.height - 4,
+        )
+        pygame.draw.rect(surface, GRAY_30, bar_rect)
+        pygame.draw.rect(surface, WHITE, bar_rect, 1)
+        if max_scroll > 0:
+            thumb_h = max(20, int(bar_rect.height * visible_height / (content_height + 1e-5)))
+            track = bar_rect.height - thumb_h
+            thumb_y = bar_rect.y + int(track * (scroll / max_scroll))
+            thumb_rect = pygame.Rect(bar_rect.x + 1, thumb_y, bar_rect.width - 2, thumb_h)
+            pygame.draw.rect(surface, GRAY_70, thumb_rect)
+            pygame.draw.rect(surface, WHITE, thumb_rect, 1)
         rects["fields"]["body"] = body_rect
+
     else:
         placeholder = "Clique em ADICIONAR ou selecione uma anotacao"
-        draw_text(surface, placeholder, FONTS["sm"], WHITE, right_rect.center, center=True)
+        draw_text(surface, placeholder, FONTS["sm"], WHITE, inner_right.center, center=True)
 
     return rects
 
@@ -488,11 +644,34 @@ def handle_mouse(pos, rects, state):
             for k in {"title", "subject", "body"}:
                 state["cursor"][k] = len(state["form"][k])
             default_style = DEFAULT_STYLE.copy()
-            state["body_styles"] = [default_style for _ in state["form"]["body"]]
+            state["body_styles"] = [default_style.copy() for _ in state["form"]["body"]]
             state["show_form"] = True
             state["focus"] = None
+            state["body_scroll"] = 0
+            state["number_sequence"] = None
             return
     state["focus"] = None
+
+
+def handle_mousewheel(delta_y, rects, state, pos=None):
+    body_rect = rects.get("fields", {}).get("body") if rects else None
+    if not body_rect:
+        return False
+    if pos is None:
+        pos = pygame.mouse.get_pos()
+    if not body_rect.collidepoint(pos):
+        return False
+    if not (state.get("show_form") or state.get("selected") is not None):
+        return False
+    max_scroll = state.get("body_scroll_max", 0)
+    if max_scroll <= 0:
+        state["body_scroll"] = 0
+        return True
+    step = 40
+    new_scroll = state.get("body_scroll", 0) - delta_y * step
+    new_scroll = max(0, min(max_scroll, new_scroll))
+    state["body_scroll"] = new_scroll
+    return True
 
 
 def handle_key(event, state):
@@ -531,11 +710,22 @@ def handle_key(event, state):
         cur = len(buf)
     elif key == pygame.K_RETURN:
         if field == "body":
+            seq = state.get("number_sequence")
             buf = buf[:cur] + "\n" + buf[cur:]
             styles = state.get("body_styles", [])
             styles = styles[:cur] + [state["style_flags"].copy()] + styles[cur:]
-            state["body_styles"] = styles
             cur += 1
+            if seq:
+                number_text = f"{seq + 1}. "
+                style_snap = state["style_flags"].copy()
+                buf = buf[:cur] + number_text + buf[cur:]
+                insert_styles = [style_snap for _ in number_text]
+                styles = styles[:cur] + insert_styles + styles[cur:]
+                cur += len(number_text)
+                state["number_sequence"] = seq + 1
+            else:
+                state["number_sequence"] = None
+            state["body_styles"] = styles
     if field == "search":
         state["search"] = buf
         ensure_filtered(state)
@@ -571,6 +761,8 @@ def main():
                 handle_mouse(event.pos, rects, NOTES_STATE)
             elif event.type == pygame.TEXTINPUT:
                 handle_text_input(event, NOTES_STATE)
+            elif event.type == pygame.MOUSEWHEEL:
+                handle_mousewheel(event.y, rects, NOTES_STATE)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
