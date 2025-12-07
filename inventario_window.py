@@ -33,72 +33,138 @@ FONTS = {
 
 CATEGORIES = ["Armas", "Municao", "Protecao", "Magikos", "Coletaveis", "Itens chave", "Componentes"]
 
-DEFAULT_ITEMS = [
-    {
-        "name": "Espada curta",
-        "category": "Armas",
-        "space": 2,
-        "tipo": "Leve",
-        "alcance": "1m",
-        "empunhadura": "Uma mao",
-        "dano": "1D6",
-        "protecao": 0,
-        "descricao": "Lamina simples, equilibrada para combates rapidos.",
-        "localizacao": "Coldres",
-        "info1": "Fabricada pelos ferreiros de Rorul.",
-        "info2": "Ocupa 2 espacos do inventario.",
-    },
-    {
-        "name": "Escudo pequeno",
-        "category": "Protecao",
-        "space": 3,
-        "tipo": "Defesa",
-        "alcance": "---",
-        "empunhadura": "Braco",
-        "dano": "---",
-        "protecao": 2,
-        "descricao": "Escudo leve que concede +2 de protecao enquanto equipado.",
-        "localizacao": "Costas",
-        "info1": "Concede cobertura parcial em abrigos.",
-        "info2": "Requer uma mao livre para uso.",
-    },
-    {
-        "name": "Pistola arcana",
-        "category": "Magikos",
-        "space": 1,
-        "tipo": "Fogo",
-        "alcance": "9m",
-        "empunhadura": "Uma mao",
-        "dano": "1D8",
-        "protecao": 0,
-        "descricao": "Dispara rajadas concentradas de energia canalizada.",
-        "localizacao": "Coldres",
-        "info1": "Consome um cartucho arcano por cena.",
-        "info2": "Nao sofre penalidade em ambientes fechados.",
-    },
-    {
-        "name": "Colete reforcado",
-        "category": "Protecao",
-        "space": 2,
-        "tipo": "Armadura",
-        "alcance": "---",
-        "empunhadura": "---",
-        "dano": "---",
-        "protecao": 5,
-        "descricao": "Colete resistente que adiciona protecao adicional ao usuario.",
-        "localizacao": "Equipado",
-        "info1": "Concede resistencia a dano perfurante.",
-        "info2": "Necessita manutencao semanal.",
-    },
-]
+# Itens de exemplo removidos; lista inicia vazia para uso real.
+DEFAULT_ITEMS = []
+
+OPTION_VALUES = {
+    "category": ["---"] + CATEGORIES,
+    "space": ["---", "0", "1", "2", "3", "4", "5"],
+    "tipo": ["---", "Corpo a corpo", "Distancia", "Explosivo", "M.P.", "M.E.", "M.R."],
+    "alcance": ["---", "Perto", "6m", "9m", "12m", "18m"],
+    "empunhadura": ["---", "Leve", "Uma mao", "Duas maos"],
+    "dano": ["---", "1D4", "1D6", "1D8", "1D10", "1D12", "1D20", "1D100"],
+    "protecao": ["---", "1", "2", "3", "4", "5"],
+}
 
 
 def clone_default_items():
     return [item.copy() for item in DEFAULT_ITEMS]
 
 
+def make_blank_item(state):
+    """Cria item basico para adicao rapida respeitando filtro atual."""
+    current_filter = (state.get("filters", {}).get("category") or "Todos").strip()
+    category = current_filter if current_filter.lower() != "todos" else OPTION_VALUES["category"][0]
+    base_name = ""
+    return {
+        "name": base_name,
+        "category": category,
+        "space": OPTION_VALUES["space"][0],
+        "tipo": OPTION_VALUES["tipo"][0],
+        "alcance": OPTION_VALUES["alcance"][0],
+        "empunhadura": OPTION_VALUES["empunhadura"][0],
+        "dano": OPTION_VALUES["dano"][0],
+        "protecao": OPTION_VALUES["protecao"][0],
+        "descricao": "",
+        "localizacao": "",
+        "info1": "",
+        "info2": "",
+        "image_path": None,
+    }
+
+
+def add_new_item(state):
+    state.setdefault("items", [])
+    new_item = make_blank_item(state)
+    state["items"].append(new_item)
+    ensure_filtered(state)
+    state["selected"] = len(state["items"]) - 1
+    set_status(state, "Item adicionado.", GREEN)
+    return new_item
+
+
+def open_add_modal(state):
+    blank = make_blank_item(state)
+    form = {}
+    for k, v in blank.items():
+        if k == "_image_cache":
+            continue
+        if k in OPTION_VALUES:
+            form[k] = v if v in OPTION_VALUES[k] else OPTION_VALUES[k][0]
+        else:
+            form[k] = "" if v is None else str(v)
+    state["modal"] = {
+        "type": "add_item",
+        "form": form,
+        "focus": "name",
+        "cursor": {"name": len(form.get("name", ""))},
+        "dropdown": None,
+        "scrolls": {"descricao": 0, "info1": 0, "info2": 0},
+        "scroll_max": {"descricao": 0, "info1": 0, "info2": 0},
+    }
+
+
+def close_modal(state):
+    state["modal"] = None
+
+
+def cycle_option_value(key, current, delta=1):
+    values = OPTION_VALUES.get(key)
+    if not values:
+        return current
+    try:
+        idx = values.index(current)
+    except ValueError:
+        idx = 0
+    new_idx = (idx + delta) % len(values)
+    return values[new_idx]
+
+
+def build_item_from_form(state, form):
+    item = make_blank_item(state)
+    item["name"] = (form.get("name") or "").strip()
+    item["category"] = (form.get("category") or item["category"]).strip() or OPTION_VALUES["category"][0]
+    item["space"] = (form.get("space") or item["space"]).strip() or OPTION_VALUES["space"][0]
+    item["tipo"] = (form.get("tipo") or item["tipo"]).strip() or OPTION_VALUES["tipo"][0]
+    item["alcance"] = (form.get("alcance") or item["alcance"]).strip() or OPTION_VALUES["alcance"][0]
+    item["empunhadura"] = (form.get("empunhadura") or item["empunhadura"]).strip() or OPTION_VALUES["empunhadura"][0]
+    item["dano"] = (form.get("dano") or item["dano"]).strip() or OPTION_VALUES["dano"][0]
+    item["protecao"] = (form.get("protecao") or item["protecao"]).strip() or OPTION_VALUES["protecao"][0]
+    item["descricao"] = form.get("descricao") or ""
+    item["localizacao"] = (form.get("localizacao") or "").strip()
+    item["info1"] = form.get("info1") or ""
+    item["info2"] = form.get("info2") or ""
+    img_val = form.get("image_path")
+    item["image_path"] = img_val if img_val else None
+    return item
+
+
+def confirm_add_modal(state):
+    modal = state.get("modal") or {}
+    form = modal.get("form") or {}
+    state.setdefault("items", [])
+    mode = modal.get("type") or "add_item"
+    if mode == "edit_item" and "edit_index" in modal and modal["edit_index"] is not None:
+        idx = modal["edit_index"]
+        if 0 <= idx < len(state["items"]):
+            updated = build_item_from_form(state, form)
+            state["items"][idx] = updated
+            ensure_filtered(state)
+            state["selected"] = idx
+            close_modal(state)
+            set_status(state, "Item atualizado.", GREEN)
+            return updated
+    new_item = build_item_from_form(state, form)
+    state["items"].append(new_item)
+    ensure_filtered(state)
+    state["selected"] = len(state["items"]) - 1
+    close_modal(state)
+    set_status(state, "Item adicionado.", GREEN)
+    return new_item
+
+
 def wrap_text(text, font, max_width):
-    """Divide texto em linhas respeitando largura maxima."""
+    """Divide texto em linhas respeitando largura maxima, quebrando palavras longas se preciso."""
     lines = []
     current = ""
     for word in (text or "").split(" "):
@@ -108,10 +174,101 @@ def wrap_text(text, font, max_width):
         else:
             if current:
                 lines.append(current)
-            current = word
+            # quebra palavra longa em blocos
+            chunk = ""
+            for ch in word:
+                if font.size(chunk + ch)[0] <= max_width:
+                    chunk += ch
+                else:
+                    lines.append(chunk)
+                    chunk = ch
+            current = chunk
     if current:
         lines.append(current)
     return lines or [""]
+
+
+def wrap_text_with_starts(text, font, max_width):
+    """Quebra texto em largura fixa e retorna linhas e indice inicial de cada linha."""
+    text = text or ""
+    lines = []
+    starts = []
+    current = ""
+    start_idx = 0
+    for i, ch in enumerate(text):
+        if ch == "\n":
+            lines.append(current)
+            starts.append(start_idx)
+            current = ""
+            start_idx = i + 1
+            continue
+        candidate = current + ch
+        if font.size(candidate)[0] <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            starts.append(start_idx)
+            current = ch if font.size(ch)[0] <= max_width else ""
+            start_idx = i
+    if current or not lines:
+        lines.append(current)
+        starts.append(start_idx)
+    return lines, starts
+
+def clean_option(value):
+    """Retorna texto sem marcador '---'."""
+    v = (value or "").strip()
+    return "" if v == "---" else v
+
+
+def ellipsize(text, font, max_width):
+    """Trunca texto com reticencias para caber na largura."""
+    if font.size(text)[0] <= max_width:
+        return text
+    ellipsis = "..."
+    allowed = text
+    while allowed and font.size(allowed + ellipsis)[0] > max_width:
+        allowed = allowed[:-1]
+    return (allowed + ellipsis) if allowed else ellipsis
+
+
+def load_scaled_image(path, target_size):
+    """Carrega e redimensiona uma imagem preservando proporcao para caber em target_size."""
+    if not path or str(path).strip() == "---":
+        return None
+    try:
+        img = pygame.image.load(path)
+        img = img.convert_alpha()
+        iw, ih = img.get_size()
+        tw, th = target_size
+        if iw <= 0 or ih <= 0 or tw <= 0 or th <= 0:
+            return None
+        scale = min(tw / iw, th / ih)
+        new_size = (max(1, int(iw * scale)), max(1, int(ih * scale)))
+        return pygame.transform.smoothscale(img, new_size)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Erro ao carregar imagem '{path}': {exc}")
+        return None
+
+
+def choose_image_file():
+    """Abre dialogo para selecionar imagem e retorna o caminho escolhido."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", 1)
+        file_path = filedialog.askopenfilename(
+            title="Selecionar imagem do item",
+            filetypes=[("Imagens", "*.png;*.jpg;*.jpeg;*.bmp;*.gif"), ("Todos os arquivos", "*.*")],
+        )
+        root.destroy()
+        return file_path
+    except Exception as exc:  # noqa: BLE001
+        print(f"Erro ao abrir seletor de arquivos: {exc}")
+        return None
 
 
 def safe_int(value, default=0):
@@ -198,24 +355,27 @@ def select_next(state, delta):
 
 def draw_inventory_panel(surface, state):
     surface.fill(BLACK)
-    rects = {"filters": [], "rows": [], "buttons": {}, "fields": {}, "list_area": None}
+    rects = {"filters": [], "rows": [], "buttons": {}, "fields": {}, "list_area": None, "scroll_fields": []}
 
     panel_rect = pygame.Rect(8, 8, WIDTH - 16, HEIGHT - 16)
     pygame.draw.rect(surface, GRAY_15, panel_rect)
     pygame.draw.rect(surface, WHITE, panel_rect, 2)
     inner = panel_rect.inflate(-16, -16)
 
-    draw_text(surface, "INVENTARIO", FONTS["md"], WHITE, (inner.x, inner.y - 4))
-    limits_rect = pygame.Rect(inner.x, inner.y + 10, inner.width, 120)
+    #draw_text(surface, "INVENTARIO", FONTS["md"], WHITE, (inner.x, inner.y - 4))
+    limits_rect = pygame.Rect(inner.x, inner.y + 2, inner.width, 120)
     draw_limits_section(surface, limits_rect, state)
 
-    content_top = limits_rect.bottom + 12
-    left_width = int(inner.width * 0.45)
-    left_rect = pygame.Rect(inner.x, content_top, left_width - 6, inner.bottom - content_top)
-    right_rect = pygame.Rect(left_rect.right + 12, content_top, inner.right - left_rect.right - 12, left_rect.height)
+    content_top = limits_rect.bottom + 6
+    left_width = int(inner.width * 0.50)
+    left_rect = pygame.Rect(inner.x, content_top, left_width - 2, inner.bottom - content_top)
+    right_rect = pygame.Rect(left_rect.right + 2, content_top, inner.right - left_rect.right - 6, left_rect.height)
 
-    draw_left_detail(surface, left_rect, state)
+    draw_left_detail(surface, left_rect, state, rects)
     draw_right_panel(surface, right_rect, state, rects)
+
+    if state.get("modal"):
+        rects["modal"] = draw_modal(surface, state)
 
     state["rects"] = rects
     return rects
@@ -238,7 +398,7 @@ def draw_limit_row(surface, label, values, start_pos):
     x = label_pos[0]
     y = label_pos[1] + 16
     box_w, box_h = 40, 30
-    gap = 6
+    gap = 8
     for val in values:
         rect = pygame.Rect(x, y, box_w, box_h)
         pygame.draw.rect(surface, BLACK, rect)
@@ -267,96 +427,371 @@ def draw_limits_section(surface, rect, state):
     draw_text(surface, weight_text, FONTS["sm_b"], WHITE, weight_rect.center, center=True)
 
 
-def draw_form_box(surface, rect, label, text):
+def draw_form_box(surface, rect, label, text, scroll_offset=0, return_max=False):
     pygame.draw.rect(surface, BLACK, rect)
     pygame.draw.rect(surface, WHITE, rect, 1)
     draw_text(surface, label, FONTS["xs"], WHITE, (rect.x, rect.y - 16))
     lines = wrap_text(text or "--", FONTS["xs"], rect.width - 12)
-    y = rect.y + 6
     max_lines = max(1, rect.height // (FONTS["xs"].get_height() + 2))
-    for line in lines[:max_lines]:
+    max_scroll = max(0, len(lines) - max_lines)
+    start = max(0, min(scroll_offset, max_scroll))
+    y = rect.y + 6
+    for line in lines[start : start + max_lines]:
         draw_text(surface, line, FONTS["xs"], WHITE, (rect.x + 6, y))
         y += FONTS["xs"].get_height() + 2
+    if return_max:
+        return max_scroll
 
 
-def draw_left_detail(surface, detail_rect, state):
+def draw_left_detail(surface, detail_rect, state, rects):
     pygame.draw.rect(surface, BLACK, detail_rect)
     pygame.draw.rect(surface, WHITE, detail_rect, 1)
-    inner = detail_rect.inflate(-12, -12)
+    inner = detail_rect.inflate(-10, -10)
     item = get_selected_item(state)
     if not item:
         draw_text(surface, "Nenhum item selecionado.", FONTS["sm"], GRAY_80, (inner.x, inner.y))
         return
 
     image_rect = pygame.Rect(inner.x, inner.y, 140, 140)
+    rects["buttons"]["image_upload"] = image_rect
     pygame.draw.rect(surface, BLACK, image_rect)
-    pygame.draw.rect(surface, WHITE, image_rect, 1)
-    draw_text(surface, "imagem do\nitem*", FONTS["xs"], WHITE, image_rect.center, center=True)
+    pygame.draw.rect(surface, WHITE, image_rect, 2)
+    target_size = (image_rect.width - 6, image_rect.height - 6)
+    img_surface = None
+    image_path = item.get("image_path")
+    if image_path == "---":
+        image_path = None
+    cache = item.get("_image_cache", {})
+    cache_key = (image_path, target_size)
+    if cache.get("key") == cache_key:
+        img_surface = cache.get("surf")
+    elif image_path:
+        loaded = load_scaled_image(image_path, target_size)
+        if loaded:
+            img_surface = loaded
+            item["_image_cache"] = {"key": cache_key, "surf": loaded}
+    if img_surface:
+        img_rect = img_surface.get_rect(center=image_rect.center)
+        surface.blit(img_surface, img_rect)
+    else:
+        draw_text(surface, "imagem do\nitem*", FONTS["xs"], WHITE, image_rect.center, center=True)
 
-    info_rect = pygame.Rect(image_rect.right + 10, inner.y, inner.width - image_rect.width - 10, 140)
+    info_rect = pygame.Rect(image_rect.right + 10, inner.y, inner.width - image_rect.width - 10, 145)
     pygame.draw.rect(surface, BLACK, info_rect)
     pygame.draw.rect(surface, WHITE, info_rect, 1)
-    draw_text(surface, item.get("name", "Nome do item*"), FONTS["sm_b"], WHITE, (info_rect.x + 6, info_rect.y + 6))
+    title_text = ellipsize(item.get("name") or "Nome do item*", FONTS["sm_b"], info_rect.width - 12)
+    draw_text(surface, title_text, FONTS["sm_b"], WHITE, (info_rect.x + 6, info_rect.y + 6))
     info_pairs = [
-        ("Categoria", item.get("category", "--")),
-        ("Espaco", str(item.get("space", "--"))),
-        ("Tipo", item.get("tipo", "--")),
-        ("Alcance", item.get("alcance", "--")),
-        ("Empunhadura", item.get("empunhadura", "--")),
-        ("Dano", item.get("dano", "--")),
-        ("Protecao", f"+{item.get('protecao', 0)}"),
-        ("Localizacao", item.get("localizacao", "--")),
+        ("Categoria", clean_option(item.get("category", ""))),
+        ("Espaco", clean_option(item.get("space", ""))),
+        ("Tipo", clean_option(item.get("tipo", ""))),
+        ("Alcance", clean_option(item.get("alcance", ""))),
+        ("Empunhadura", clean_option(item.get("empunhadura", ""))),
+        ("Dano", clean_option(item.get("dano", ""))),
+        ("Protecao", f"+{clean_option(item.get('protecao', ''))}" if clean_option(item.get("protecao", "")) else ""),
+        ("Localizacao", clean_option(item.get("localizacao", ""))),
     ]
-    info_inner = info_rect.inflate(-8, -10)
-    text_y = info_inner.y + 24
-    row_height = 18
-    cols = 2 if info_inner.width >= 260 else 1
-    col_w = max(120, info_inner.width // cols)
-    for idx, (label, value) in enumerate(info_pairs):
-        col = idx % cols
-        row = idx // cols
-        y = text_y + row * row_height
-        x = info_inner.x + col * col_w
-        draw_text(surface, f"{label}:", FONTS["xs"], GRAY_80, (x, y))
-        value_text = str(value)
-        value_x = x + 72
-        max_x = info_inner.x + min(info_inner.width, (col + 1) * col_w) - 4
-        if value_x + FONTS["xs"].size(value_text)[0] > max_x:
-            value_x = max(info_inner.x + col * col_w + 72, max_x - FONTS["xs"].size(value_text)[0])
-        draw_text(surface, value_text, FONTS["xs"], WHITE, (value_x, y))
+    info_inner = info_rect.inflate(-8, -8)
+    text_y = info_inner.y + 18
+    font_xs = FONTS["xs"]
+    cols = 2
+    col_w = max(1, info_inner.width // cols)
+    valid_pairs = [(label, value) for label, value in info_pairs if value]
+    if valid_pairs:
+        max_label_w = max(font_xs.size(f"{label}:")[0] for label, _ in valid_pairs)
+    else:
+        max_label_w = 0
+    label_w = max(20, min(col_w - 8, max_label_w))
+    line_h = font_xs.get_height()
+    rows = (len(valid_pairs) + cols - 1) // cols
+    row_y = text_y
+    for row_idx in range(rows):
+        row_height = line_h
+        for col_idx in range(cols):
+            idx = row_idx * cols + col_idx
+            if idx >= len(valid_pairs):
+                continue
+            label, value = valid_pairs[idx]
+            x = info_inner.x + col_idx * col_w
+            draw_text(surface, f"{label}:", font_xs, GRAY_80, (x, row_y))
+            max_value_width = max(20, col_w - label_w - 6)
+            value_lines = wrap_text(str(value), font_xs, max_value_width)
+            line_y = row_y
+            for line in value_lines:
+                draw_text(surface, line, font_xs, WHITE, (x + label_w, line_y))
+                line_y += line_h
+            row_height = max(row_height, len(value_lines) * line_h)
+        row_y += row_height + 2
 
-    desc_rect = pygame.Rect(inner.x, image_rect.bottom + 20, inner.width, 140)
-    draw_form_box(surface, desc_rect, "Descricao*", item.get("descricao", ""))
+    scrolls = state.setdefault("scrolls", {"descricao": 0, "info1": 0, "info2": 0})
+    scroll_max = state.setdefault("scroll_max", {})
+    rects["scroll_fields"] = rects.get("scroll_fields", [])
 
-    info1_rect = pygame.Rect(inner.x, desc_rect.bottom + 14, inner.width, 86)
-    draw_form_box(surface, info1_rect, "Info adicional 1", item.get("info1", ""))
+    def dyn_height(text, min_h, max_h, width):
+        lines = wrap_text(text or "--", FONTS["xs"], width - 12)
+        h = len(lines) * (FONTS["xs"].get_height() + 2) + 8
+        return max(min_h, min(max_h, h))
 
-    info2_rect = pygame.Rect(inner.x, info1_rect.bottom + 14, inner.width, 86)
-    draw_form_box(surface, info2_rect, "Info adicional 2", item.get("info2", ""))
+    start_y = image_rect.bottom + 30
+    min_desc, max_desc = 54, 220
+    min_info, max_info = 54, 180
+    available = inner.bottom - start_y - 80  # space for buttons
+    desired_desc = dyn_height(item.get("descricao", ""), min_desc, max_desc, inner.width)
+    desired_info1 = dyn_height(item.get("info1", ""), min_info, max_info, inner.width)
+    desired_info2 = dyn_height(item.get("info2", ""), min_info, max_info, inner.width)
+    total_desired = desired_desc + 25 + desired_info1 + 20 + desired_info2
+    if total_desired > available and total_desired > 0:
+        scale = available / total_desired
+        desired_desc = max(min_desc, int(desired_desc * scale))
+        desired_info1 = max(min_info, int(desired_info1 * scale))
+        desired_info2 = max(min_info, int(desired_info2 * scale))
+
+    desc_rect = pygame.Rect(inner.x, start_y, inner.width, desired_desc)
+    scroll_max["descricao"] = draw_form_box(
+        surface, desc_rect, "Descricao*", item.get("descricao", ""), scrolls.get("descricao", 0), True
+    )
+    rects["scroll_fields"].append(("descricao", desc_rect))
+
+    info1_rect = pygame.Rect(inner.x, desc_rect.bottom + 25, inner.width, desired_info1)
+    scroll_max["info1"] = draw_form_box(
+        surface, info1_rect, "Info adicional 1", item.get("info1", ""), scrolls.get("info1", 0), True
+    )
+    rects["scroll_fields"].append(("info1", info1_rect))
+
+    info2_rect = pygame.Rect(inner.x, info1_rect.bottom + 20, inner.width, desired_info2)
+    scroll_max["info2"] = draw_form_box(
+        surface, info2_rect, "Info adicional 2", item.get("info2", ""), scrolls.get("info2", 0), True
+    )
+    rects["scroll_fields"].append(("info2", info2_rect))
+
+    btn_h = 32
+    btn_w = 120
+    btn_gap = 10
+    btn_area_y = info2_rect.bottom + 12
+    edit_rect = pygame.Rect(inner.x, btn_area_y, btn_w, btn_h)
+    remove_rect = pygame.Rect(edit_rect.right + btn_gap, btn_area_y, btn_w, btn_h)
+    rects["buttons"]["edit_item"] = edit_rect
+    rects["buttons"]["remove_item"] = remove_rect
+    pygame.draw.rect(surface, ORANGE, edit_rect)
+    pygame.draw.rect(surface, WHITE, edit_rect, 1)
+    pygame.draw.rect(surface, RED, remove_rect)
+    pygame.draw.rect(surface, WHITE, remove_rect, 1)
+    draw_text(surface, "EDITAR", FONTS["sm_b"], BLACK, edit_rect.center, center=True)
+    draw_text(surface, "REMOVER", FONTS["sm_b"], BLACK, remove_rect.center, center=True)
 
 
 def draw_filter_row(surface, start_rect, state):
     filter_rects = []
     labels = ["Todos"] + CATEGORIES
     active = (state.get("filters", {}).get("category") or "Todos").lower()
-    x = start_rect.x
-    y = start_rect.y
-    max_width = start_rect.width
-    for label in labels:
+    cols = 2
+    rows = 4
+    col_gap = 6
+    row_gap = 6
+    btn_h = 22
+    font = FONTS["xs"]
+    col_w = max(70, (start_rect.width - col_gap * (cols - 1)) // cols)
+    for idx, label in enumerate(labels):
+        col = 0 if idx < rows else 1
+        row = idx % rows
         text = label.upper()
-        w = max(80, FONTS["xs"].size(text)[0] + 24)
-        if x + w > start_rect.x + max_width:
-            y += 34
-            x = start_rect.x
-        rect = pygame.Rect(x, y, w, 28)
+        text_w = font.size(text)[0]
+        w = min(col_w, max(70, text_w + 16))
+        x_base = start_rect.x + col * (col_w + col_gap)
+        x = x_base + max(0, (col_w - w) // 2)
+        y = start_rect.y + row * (btn_h + row_gap)
+        rect = pygame.Rect(x, y, w, btn_h)
         is_active = active == label.lower()
         color = PURPLE if is_active else GRAY_40
         pygame.draw.rect(surface, color, rect, border_radius=4)
         pygame.draw.rect(surface, WHITE, rect, 1, border_radius=4)
-        draw_text(surface, text, FONTS["xs"], WHITE, rect.center, center=True)
+        draw_text(surface, text, font, WHITE, rect.center, center=True)
         filter_rects.append((label, rect))
-        x = rect.right + 6
-    return filter_rects, y + 28
+    filters_bottom = start_rect.y + rows * btn_h + (rows - 1) * row_gap
+    return filter_rects, filters_bottom
+
+
+def draw_modal(surface, state):
+    modal = state.get("modal") or {}
+    overlay = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    surface.blit(overlay, (0, 0))
+
+    modal_w, modal_h = 600, 620
+    modal_rect = pygame.Rect(0, 0, modal_w, modal_h)
+    modal_rect.center = surface.get_rect().center
+    pygame.draw.rect(surface, GRAY_25, modal_rect, border_radius=6)
+    pygame.draw.rect(surface, WHITE, modal_rect, 2, border_radius=6)
+
+    title = "Adicionar novo item"
+    draw_text(surface, title, FONTS["md"], WHITE, (modal_rect.x + 16, modal_rect.y + 14))
+    draw_text(surface, "Preencha os campos e confirme para adicionar.", FONTS["xs"], GRAY_80, (modal_rect.x + 16, modal_rect.y + 40))
+
+    form = modal.get("form") or {}
+    focus_key = modal.get("focus")
+    fields_rects = {}
+
+    padding_x = modal_rect.x + 16
+    padding_y = modal_rect.y + 68
+    col_gap = 10
+    row_gap = 6
+    input_h = 26
+    col_w = (modal_w - 32 - col_gap) // 2
+
+    small_fields = [
+        ("name", "Nome"),
+        ("category", "Categoria"),
+        ("space", "Espaco"),
+        ("tipo", "Tipo"),
+        ("alcance", "Alcance"),
+        ("empunhadura", "Empunhadura"),
+        ("dano", "Dano"),
+        ("protecao", "Protecao"),
+        ("localizacao", "Localizacao"),
+    ]
+    for idx, (key, label) in enumerate(small_fields):
+        col = idx % 2
+        row = idx // 2
+        x = padding_x + col * (col_w + col_gap)
+        y = padding_y + row * (input_h + row_gap)
+        rect = pygame.Rect(x, y + 14, col_w, input_h)
+        is_focus = key == focus_key
+        pygame.draw.rect(surface, BLACK, rect)
+        pygame.draw.rect(surface, WHITE if is_focus else GRAY_60, rect, 1)
+        draw_text(surface, label, FONTS["xs"], WHITE, (x, y))
+        text_val = form.get(key, "")
+        shown = ellipsize(text_val, FONTS["sm"], rect.width - 8)
+        draw_text(surface, shown, FONTS["sm"], WHITE, (rect.x + 4, rect.y + 4))
+        if is_focus:
+            cur = modal.get("cursor", {}).get(key, len(text_val))
+            cur = max(0, min(cur, len(text_val)))
+            caret_x = rect.x + 4 + FONTS["sm"].size(text_val[:cur])[0]
+            if (pygame.time.get_ticks() // 400) % 2 == 0:
+                pygame.draw.line(surface, WHITE, (caret_x, rect.y + 4), (caret_x, rect.bottom - 4), 1)
+        fields_rects[key] = rect
+
+    big_start_y = padding_y + (len(small_fields) + 1) // 2 * (input_h + row_gap) + 10
+    big_fields = [
+        ("image_path", "Imagem (clique para selecionar)"),
+        ("descricao", "Descricao"),
+        ("info1", "Info adicional 1"),
+        ("info2", "Info adicional 2"),
+    ]
+    min_heights = {"image_path": 30, "descricao": 48, "info1": 48, "info2": 48}
+    max_heights = {"image_path": 30, "descricao": 220, "info1": 180, "info2": 180}
+    desired_heights = []
+    for key, _ in big_fields:
+        raw_text = form.get(key, "") or ""
+        if key == "image_path":
+            h = min_heights[key]
+        else:
+            lines = wrap_text(raw_text or "--", FONTS["sm"], modal_w - 40)
+            h = len(lines) * (FONTS["sm"].get_height() + 2) + 8
+            h = max(min_heights[key], min(max_heights[key], h))
+        desired_heights.append(h)
+    total_desired = sum(desired_heights) + 10 * (len(big_fields) - 1)
+    available = modal_rect.bottom - (big_start_y) - 70  # leave space for buttons
+    if total_desired > available and total_desired > 0:
+        scale = available / total_desired
+        for i in range(len(desired_heights)):
+            key = big_fields[i][0]
+            desired_heights[i] = max(min_heights[key], int(desired_heights[i] * scale))
+    current_y = big_start_y
+    for idx_b, (key, label) in enumerate(big_fields):
+        h = desired_heights[idx_b]
+        rect = pygame.Rect(padding_x, current_y + 14, modal_w - 32, h)
+        is_focus = key == focus_key
+        pygame.draw.rect(surface, BLACK, rect)
+        pygame.draw.rect(surface, WHITE if is_focus else GRAY_60, rect, 1)
+        draw_text(surface, label, FONTS["xs"], WHITE, (rect.x, current_y))
+        raw_text = form.get(key, "") or ("---" if key == "image_path" else "")
+        if key == "image_path":
+            shown_text = ellipsize(raw_text, FONTS["sm"], rect.width - 8)
+            draw_text(surface, shown_text, FONTS["sm"], WHITE, (rect.x + 4, rect.y + 6))
+        else:
+            scrolls = modal.setdefault("scrolls", {})
+            scroll_max = modal.setdefault("scroll_max", {})
+            lines, starts = wrap_text_with_starts(raw_text, FONTS["sm"], rect.width - 8)
+            max_lines = max(1, (rect.height - 8) // (FONTS["sm"].get_height() + 2))
+            caret_idx = modal.get("cursor", {}).get(key, len(raw_text))
+            caret_idx = max(0, min(caret_idx, len(raw_text)))
+            caret_line = 0
+            for i, start_idx in enumerate(starts):
+                end_idx = starts[i + 1] if i + 1 < len(starts) else len(raw_text)
+                if start_idx <= caret_idx <= end_idx:
+                    caret_line = i
+                    break
+            cur_scroll = max(0, min(scrolls.get(key, 0), max(0, len(lines) - max_lines)))
+            if caret_line < cur_scroll:
+                cur_scroll = caret_line
+            elif caret_line >= cur_scroll + max_lines:
+                cur_scroll = caret_line - max_lines + 1
+            scrolls[key] = cur_scroll
+            scroll_max[key] = max(0, len(lines) - max_lines)
+            visible = lines[cur_scroll : cur_scroll + max_lines]
+            y_text = rect.y + 4
+            for i_line, line in enumerate(visible):
+                draw_text(surface, line, FONTS["sm"], WHITE, (rect.x + 4, y_text))
+                y_text += FONTS["sm"].get_height() + 2
+            if is_focus and (pygame.time.get_ticks() // 400) % 2 == 0:
+                rel_line = caret_line - cur_scroll
+                if 0 <= rel_line < max_lines:
+                    line_start_idx = starts[caret_line]
+                    caret_sub = raw_text[line_start_idx:caret_idx]
+                    caret_x = rect.x + 4 + FONTS["sm"].size(caret_sub)[0]
+                    caret_y = rect.y + 4 + rel_line * (FONTS["sm"].get_height() + 2)
+                    pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, caret_y + FONTS["sm"].get_height()), 1)
+        fields_rects[key] = rect
+        current_y = rect.bottom + 10
+
+    btn_w, btn_h = 140, 34
+    btn_y = modal_rect.bottom - btn_h - 16
+    cancel_rect = pygame.Rect(modal_rect.x + 16, btn_y, btn_w, btn_h)
+    add_rect = pygame.Rect(modal_rect.right - btn_w - 16, btn_y, btn_w, btn_h)
+    pygame.draw.rect(surface, GRAY_40, cancel_rect, border_radius=4)
+    pygame.draw.rect(surface, WHITE, cancel_rect, 1, border_radius=4)
+    pygame.draw.rect(surface, GREEN, add_rect, border_radius=4)
+    pygame.draw.rect(surface, WHITE, add_rect, 1, border_radius=4)
+    draw_text(surface, "CANCELAR", FONTS["sm_b"], WHITE, cancel_rect.center, center=True)
+    draw_text(surface, "ADICIONAR", FONTS["sm_b"], BLACK, add_rect.center, center=True)
+
+    dropdown_info = None
+    dropdown = modal.get("dropdown")
+    if dropdown and dropdown.get("field") in OPTION_VALUES:
+        base_rect = fields_rects.get(dropdown["field"])
+        options = OPTION_VALUES.get(dropdown["field"], [])
+        if base_rect and options:
+            opt_h = input_h
+            opt_pad = 2
+            opt_rects = []
+            drop_y = base_rect.bottom + 4
+            max_drop_bottom = modal_rect.bottom - 80
+            total_h = len(options) * (opt_h + opt_pad)
+            if drop_y + total_h > max_drop_bottom:
+                drop_y = max(modal_rect.y + 12, base_rect.top - 4 - total_h)
+            drop_rect = pygame.Rect(base_rect.x, drop_y, base_rect.width, total_h)
+            pygame.draw.rect(surface, GRAY_40, drop_rect)
+            pygame.draw.rect(surface, WHITE, drop_rect, 1)
+            for idx_opt, opt_val in enumerate(options):
+                r = pygame.Rect(base_rect.x, drop_y + idx_opt * (opt_h + opt_pad), base_rect.width, opt_h)
+                pygame.draw.rect(surface, GRAY_60 if idx_opt % 2 else GRAY_25, r)
+                is_current = form.get(dropdown["field"]) == opt_val
+                if is_current:
+                    pygame.draw.rect(surface, PURPLE, r, 2)
+                draw_text(surface, opt_val, FONTS["sm"], WHITE, (r.x + 4, r.y + 4))
+                opt_rects.append((opt_val, r))
+            dropdown_info = {"field": dropdown["field"], "rects": opt_rects, "area": drop_rect}
+        else:
+            modal["dropdown"] = None
+
+    return {
+        "type": modal.get("type"),
+        "add": add_rect,
+        "cancel": cancel_rect,
+        "area": modal_rect,
+        "fields": fields_rects,
+        "dropdown": dropdown_info,
+    }
 
 
 def draw_right_panel(surface, rect, state, rects):
@@ -375,22 +810,22 @@ def draw_right_panel(surface, rect, state, rects):
     filters, filters_bottom = draw_filter_row(surface, filter_rect, state)
     rects["filters"] = filters
 
-    search_rect = pygame.Rect(inner.x, filters_bottom + 10, inner.width, 32)
+    search_rect = pygame.Rect(inner.x, filters_bottom + 20, inner.width, 32)
     pygame.draw.rect(surface, BLACK, search_rect)
     pygame.draw.rect(surface, WHITE if state.get("focus") == "search" else GRAY_60, search_rect, 1)
     placeholder = "Pesquisar por nome..."
     text = state.get("search", "")
     draw_text(surface, placeholder, FONTS["xs"], GRAY_80, (search_rect.x, search_rect.y - 16))
-    draw_text(surface, text, FONTS["sm"], WHITE, (search_rect.x + 6, search_rect.y + 6))
+    draw_text(surface, text, FONTS["sm"], WHITE, (search_rect.x + 2, search_rect.y + 2))
     rects["fields"]["search"] = search_rect
     if state.get("focus") == "search":
         cursor = state.get("cursor", {}).get("search", len(text))
         cursor = max(0, min(cursor, len(text)))
-        caret_x = search_rect.x + 6 + FONTS["sm"].size(text[:cursor])[0]
+        caret_x = search_rect.x + 2 + FONTS["sm"].size(text[:cursor])[0]
         if (pygame.time.get_ticks() // 400) % 2 == 0:
-            pygame.draw.line(surface, WHITE, (caret_x, search_rect.y + 6), (caret_x, search_rect.bottom - 6), 1)
+            pygame.draw.line(surface, WHITE, (caret_x, search_rect.y + 2), (caret_x, search_rect.bottom - 2), 1)
 
-    list_top = search_rect.bottom + 12
+    list_top = search_rect.bottom + 8
     list_rect = pygame.Rect(inner.x, list_top, inner.width, inner.bottom - list_top - 16)
     rects["list_area"] = list_rect
     rows = draw_item_list(surface, list_rect, state)
@@ -428,11 +863,67 @@ def draw_item_list(surface, list_rect, state):
         draw_text(surface, "imagem", FONTS["xs"], GRAY_80, image_rect.center, center=True)
 
         text_x = image_rect.right + 10
-        draw_text(surface, item.get("name", "Sem nome"), FONTS["sm_b"], WHITE, (text_x, y + 8))
-        stats_line = f"Dano: {item.get('dano', '--')}   Alcance: {item.get('alcance', '--')}"
-        draw_text(surface, stats_line, FONTS["xs"], WHITE, (text_x, y + 30))
-        cat_line = f"Categoria: {item.get('category', '--')}   Tipo: {item.get('tipo', '--')}"
-        draw_text(surface, cat_line, FONTS["xs"], GRAY_80, (text_x, y + 48))
+        content_w = row_rect.right - text_x - 10
+        name = item.get("name", "Sem nome")
+        cat = clean_option(item.get("category", ""))
+        dano = clean_option(item.get("dano", ""))
+        alcance = clean_option(item.get("alcance", ""))
+        protecao = clean_option(item.get("protecao", ""))
+        emp = clean_option(item.get("empunhadura", ""))
+        desc = item.get("descricao", "") or ""
+        # Nome (laranja)
+        name_shown = ellipsize(name, FONTS["sm_b"], max(20, content_w // 2 - 8))
+        draw_text(surface, name_shown, FONTS["sm_b"], ORANGE, (text_x, y + 6))
+        # Categoria (vermelho)
+        if cat:
+            draw_text(surface, cat, FONTS["xs"], RED, (text_x, y + 22))
+        # Dano (azul)
+        if dano:
+            draw_text(surface, f"Dano: {dano}", FONTS["xs"], (80, 160, 255), (text_x, y + 34))
+        # Alcance ou Protecao (verde)
+        green_y = y + 46
+        if alcance:
+            draw_text(surface, f"Alcance: {alcance}", FONTS["xs"], GREEN, (text_x, green_y))
+        elif protecao:
+            draw_text(surface, f"Protecao: {protecao}", FONTS["xs"], GREEN, (text_x, green_y))
+        # Empunhadura (amarelo)
+        if emp:
+            draw_text(surface, f"Empunhadura: {emp}", FONTS["xs"], ORANGE, (text_x + content_w // 2, y + 10))
+        # Descricao (branco, truncada)
+        desc_rect = pygame.Rect(text_x + content_w // 2, y + 28, content_w // 2, row_h - 35)
+        pygame.draw.rect(surface, BLACK, desc_rect)
+        pygame.draw.rect(surface, GRAY_25, desc_rect, 1)
+        def wrap_hard(text, font, max_w):
+            lines = []
+            cur = ""
+            for ch in text:
+                candidate = cur + ch
+                if font.size(candidate)[0] <= max_w:
+                    cur = candidate
+                else:
+                    if cur:
+                        lines.append(cur)
+                    cur = ch if font.size(ch)[0] <= max_w else ""
+            if cur:
+                lines.append(cur)
+            return lines or [""]
+
+        desc_lines = wrap_hard(desc, FONTS["xs"], desc_rect.width - 6)
+        max_desc_lines = max(1, (desc_rect.height - 6) // (FONTS["xs"].get_height() + 2))
+        if len(desc_lines) > max_desc_lines:
+            desc_lines = desc_lines[:max_desc_lines]
+            last = desc_lines[-1]
+            ellipsis = "..."
+            while last and FONTS["xs"].size(last + ellipsis)[0] > desc_rect.width - 6:
+                last = last[:-1]
+            desc_lines[-1] = (last + ellipsis) if last else ellipsis
+        prev_clip = surface.get_clip()
+        surface.set_clip(desc_rect)
+        dy = desc_rect.y + 3
+        for line in desc_lines:
+            draw_text(surface, line, FONTS["xs"], WHITE, (desc_rect.x + 3, dy))
+            dy += FONTS["xs"].get_height() + 2
+        surface.set_clip(prev_clip)
         rows.append((idx, row_rect))
         y += row_h
     if not rows:
@@ -441,10 +932,72 @@ def draw_item_list(surface, list_rect, state):
 
 
 def handle_mouse(pos, rects, state):
+    if state.get("modal"):
+        modal_rects = rects.get("modal", {})
+        opt = modal_rects.get("dropdown")
+        if opt and opt.get("rects"):
+            for val, r in opt["rects"]:
+                if r.collidepoint(pos):
+                    state["modal"]["form"][opt["field"]] = val
+                    state["modal"]["dropdown"] = None
+                    state["modal"]["focus"] = opt["field"]
+                    state["modal"].setdefault("cursor", {})[opt["field"]] = len(val)
+                    return True
+            if opt.get("area") and opt["area"].collidepoint(pos):
+                return True
+        else:
+            state["modal"]["dropdown"] = None
+
+        fields = modal_rects.get("fields", {})
+        for key, field_rect in fields.items():
+            if field_rect.collidepoint(pos):
+                if key == "image_path":
+                    file_path = choose_image_file()
+                    if file_path:
+                        state["modal"]["form"][key] = file_path
+                        state["modal"].setdefault("cursor", {})[key] = len(file_path)
+                        set_status(state, "Imagem selecionada.", GREEN)
+                    else:
+                        set_status(state, "Selecao de imagem cancelada.", GRAY_80)
+                    return True
+                if key in OPTION_VALUES:
+                    state["modal"]["dropdown"] = {"field": key, "rects": []}
+                    state["modal"]["focus"] = key
+                    current = state["modal"]["form"].get(key, "---")
+                    state["modal"].setdefault("cursor", {})[key] = len(str(current))
+                    return True
+                state["modal"]["focus"] = key
+                text = state["modal"]["form"].get(key, "")
+                state["modal"].setdefault("cursor", {})[key] = len(text)
+                return True
+        if state["modal"].get("dropdown"):
+            state["modal"]["dropdown"] = None
+        if modal_rects.get("add") and modal_rects["add"].collidepoint(pos):
+            confirm_add_modal(state)
+            return True
+        if modal_rects.get("cancel") and modal_rects["cancel"].collidepoint(pos):
+            close_modal(state)
+            set_status(state, "Adicao cancelada.", GRAY_80)
+            return True
+        return True
+
     search_rect = rects["fields"].get("search")
     if search_rect and search_rect.collidepoint(pos):
         state["focus"] = "search"
         state.setdefault("cursor", {})["search"] = len(state.get("search", ""))
+        return True
+    image_rect = rects["buttons"].get("image_upload")
+    if image_rect and image_rect.collidepoint(pos):
+        item = get_selected_item(state)
+        if not item:
+            return True
+        file_path = choose_image_file()
+        if file_path:
+            item["image_path"] = file_path
+            item.pop("_image_cache", None)
+            set_status(state, "Imagem carregada.", GREEN)
+        else:
+            set_status(state, "Selecao de imagem cancelada.", GRAY_80)
         return True
     for label, rect in rects.get("filters", []):
         if rect.collidepoint(pos):
@@ -454,12 +1007,33 @@ def handle_mouse(pos, rects, state):
             return True
     add_rect = rects["buttons"].get("add")
     if add_rect and add_rect.collidepoint(pos):
-        set_status(state, "Fluxo de cadastro sera implementado futuramente.", ORANGE)
+        open_add_modal(state)
         return True
     for key, rect in rects["buttons"].items():
         if key == "add":
             continue
         if rect.collidepoint(pos):
+            if key == "edit_item":
+                item = get_selected_item(state)
+                if item is not None:
+                    form = {k: str(item.get(k, "---") if item.get(k, "---") is not None else "---") for k in item if k != "_image_cache"}
+                    state["modal"] = {
+                        "type": "edit_item",
+                        "edit_index": state.get("selected"),
+                        "form": form,
+                        "focus": "name",
+                        "cursor": {"name": len(form.get("name", ""))},
+                        "dropdown": None,
+                    }
+                return True
+            if key == "remove_item":
+                sel = state.get("selected")
+                if sel is not None and 0 <= sel < len(state.get("items", [])):
+                    state["items"].pop(sel)
+                    ensure_filtered(state)
+                    state["selected"] = None
+                    set_status(state, "Item removido.", ORANGE)
+                return True
             set_status(state, f"Acao '{key}' aguardando implementacao.", ORANGE)
             return True
     for idx, row_rect in rects.get("rows", []):
@@ -474,14 +1048,58 @@ def handle_mouse(pos, rects, state):
 
 
 def handle_mousewheel(delta, rects, state, pos=None):
-    list_area = rects.get("list_area")
-    if pos and list_area and list_area.collidepoint(pos):
-        state["scroll"] = max(0, min(state.get("scroll", 0) - delta, state.get("max_scroll", 0)))
+    if state.get("modal"):
+        modal_rects = rects.get("modal", {})
+        fields = modal_rects.get("fields", {})
+        if pos and fields:
+            for key, r in fields.items():
+                if r.collidepoint(pos):
+                    modal = state.get("modal", {})
+                    if key in ("descricao", "info1", "info2"):
+                        scrolls = modal.setdefault("scrolls", {})
+                        maxes = modal.setdefault("scroll_max", {})
+                        cur = scrolls.get(key, 0)
+                        mx = maxes.get(key, 0)
+                        scrolls[key] = max(0, min(mx, cur - delta))
+                    return True
         return True
+    if pos:
+        # scroll em campos de texto do detalhe
+        for key, field_rect in rects.get("scroll_fields", []):
+            if field_rect.collidepoint(pos):
+                scrolls = state.setdefault("scrolls", {})
+                maxes = state.setdefault("scroll_max", {})
+                cur = scrolls.get(key, 0)
+                mx = maxes.get(key, 0)
+                scrolls[key] = max(0, min(mx, cur - delta))
+                return True
+        list_area = rects.get("list_area")
+        if list_area and list_area.collidepoint(pos):
+            state["scroll"] = max(0, min(state.get("scroll", 0) - delta, state.get("max_scroll", 0)))
+            return True
     return False
 
 
 def handle_text_input(event, state):
+    if state.get("modal"):
+        modal = state["modal"]
+        focus = modal.get("focus")
+        if focus and focus in modal.get("form", {}):
+            if focus in OPTION_VALUES:
+                return True
+            ch = event.text
+            if ch.isprintable():
+                text = modal["form"].get(focus, "")
+                cursor = modal.setdefault("cursor", {}).get(focus, len(text))
+                cursor = max(0, min(len(text), cursor))
+                new_text = text[:cursor] + ch + text[cursor:]
+                max_len = 45 if focus == "name" else None
+                if max_len is not None:
+                    new_text = new_text[:max_len]
+                modal["form"][focus] = new_text
+                modal["cursor"][focus] = min(len(new_text), cursor + len(ch))
+            return True
+        return False
     if state.get("focus") == "search":
         ch = event.text
         if ch.isprintable():
@@ -497,6 +1115,37 @@ def handle_text_input(event, state):
 
 
 def handle_key(event, state):
+    if state.get("modal"):
+        modal = state["modal"]
+        focus = modal.get("focus")
+        if focus and focus in modal.get("form", {}):
+            if focus in OPTION_VALUES:
+                return True
+            text = modal["form"].get(focus, "")
+            cursor = modal.setdefault("cursor", {}).get(focus, len(text))
+            if event.key == pygame.K_BACKSPACE:
+                if cursor > 0:
+                    modal["form"][focus] = text[: cursor - 1] + text[cursor:]
+                    modal["cursor"][focus] = cursor - 1
+                return True
+            if event.key == pygame.K_DELETE:
+                if cursor < len(text):
+                    modal["form"][focus] = text[:cursor] + text[cursor + 1 :]
+                return True
+            if event.key == pygame.K_LEFT:
+                modal["cursor"][focus] = max(0, cursor - 1)
+                return True
+            if event.key == pygame.K_RIGHT:
+                modal["cursor"][focus] = min(len(text), cursor + 1)
+                return True
+        if event.key == pygame.K_ESCAPE:
+            close_modal(state)
+            set_status(state, "Adicao cancelada.", GRAY_80)
+            return True
+        if event.key == pygame.K_RETURN:
+            confirm_add_modal(state)
+            return True
+        return False
     if state.get("focus") == "search":
         current = state.get("search", "")
         cursor = state.setdefault("cursor", {}).get("search", len(current))
@@ -551,6 +1200,9 @@ def make_default_state():
         "scroll": 0,
         "status": "",
         "status_color": WHITE,
+        "modal": None,
+        "scrolls": {"descricao": 0, "info1": 0, "info2": 0},
+        "scroll_max": {"descricao": 0, "info1": 0, "info2": 0},
     }
 
 
