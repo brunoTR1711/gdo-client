@@ -376,7 +376,7 @@ def draw_right_panel(surface, rect, state, rects):
     pygame.draw.rect(surface, WHITE, rect, 1)
     inner = rect.inflate(-10, -10)
 
-    add_rect = pygame.Rect(inner.right - 120, inner.y, 120, 321)
+    add_rect = pygame.Rect(inner.right - 120, inner.y, 120, 32)
     pygame.draw.rect(surface, GREEN, add_rect)
     pygame.draw.rect(surface, WHITE, add_rect, 1)
     draw_text(surface, "ADICIONAR", FONTS["sm_b"], BLACK, add_rect.center, center=True)
