@@ -22,7 +22,7 @@ RED = (200, 40, 40)
 
 pygame.init()
 pygame.display.set_caption("Painel de Anotações (demo)")
-WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+WINDOW = None
 CLOCK = pygame.time.Clock()
 
 FONTS = {
@@ -748,6 +748,9 @@ def handle_text_input(event, state):
 
 
 def main():
+    global WINDOW
+    WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Painel de Anotações (demo)")
     running = True
     ensure_filtered(NOTES_STATE)
     while running:

@@ -1,9 +1,25 @@
 import sys
 import math
 import random
+import importlib
+import logging
+from pathlib import Path
 import pygame
-import habilidades_window as HW
-import anotacoes_window as AW
+
+HW = None
+AW = None
+IW = None
+
+# Estado do carregador dos paineis externos
+LOADER_STATE = {
+    "progress": 0.0,
+    "message": "Inicializando recursos...",
+    "error": None,
+    "reported_error": False,
+    "pending": [],
+    "total": 0,
+    "loaded": 0,
+}
 
 # Dimensões base do layout original
 BASE_WIDTH = 1920
@@ -19,6 +35,15 @@ pygame.display.set_caption("GDO - Coluna de Atributos")
 WINDOW = pygame.display.set_mode((START_WIDTH, START_HEIGHT), pygame.RESIZABLE)
 CANVAS = pygame.Surface((BASE_WIDTH, BASE_HEIGHT))
 CLOCK = pygame.time.Clock()
+
+LOG_FILE = Path(__file__).with_name("gdo_client.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8", mode="w"),
+    ],
+)
 
 # Cores
 BLACK = (0, 0, 0)
@@ -49,6 +74,13 @@ ATTRIBUTES = [
     {"code": "INT", "name": "Intelecto", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
     {"code": "PRE", "name": "Presença", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
 ]
+
+
+def get_attribute_value(code):
+    for attr in ATTRIBUTES:
+        if attr.get("code") == code:
+            return attr.get("value", 0)
+    return 0
 
 # Vida: trilhas de tolerância interativas
 LIFE_TRACKS = ["LEVE", "FERIDO", "MACHUCADO", "MORRENDO"]
@@ -142,10 +174,12 @@ DICE_STATE = {
 }
 
 EMBED_STATE = {
-    "hab_surf": pygame.Surface((HW.WIDTH, HW.HEIGHT)),
+    "hab_surf": None,
     "hab_rects": None,
-    "notes_surf": pygame.Surface((AW.WIDTH, AW.HEIGHT)),
+    "notes_surf": None,
     "notes_rects": None,
+    "inv_surf": None,
+    "inv_rects": None,
 }
 
 SIDE_PANEL_STATE = {
@@ -156,6 +190,7 @@ SIDE_PANEL_STATE = {
 }
 
 UI_STATE = {"hover_attr": None, "hover_skill": None}
+PANELS_READY = False
 
 
 def find_skill_by_name(name):
@@ -163,6 +198,8 @@ def find_skill_by_name(name):
 
 
 def sync_skill_training_to_habilidades(skill_name, trained):
+    if HW is None:
+        return
     key = SKILL_DEFENSE_MAP.get(skill_name)
     if not key:
         return
@@ -170,6 +207,8 @@ def sync_skill_training_to_habilidades(skill_name, trained):
 
 
 def sync_habilidades_training_to_skills():
+    if HW is None:
+        return
     for key, trained in HW.HABILIDADES_STATE.get("skills_trained", {}).items():
         skill_name = DEFENSE_SKILL_MAP.get(key)
         if not skill_name:
@@ -180,7 +219,9 @@ def sync_habilidades_training_to_skills():
 
 
 def sync_attrs_to_habilidades():
-    """Copia os atributos atuais para o painel de habilidades para atualizar as fórmulas."""
+    """Copia os atributos atuais para o painel de habilidades para atualizar as f?rmulas."""
+    if HW is None:
+        return
     for attr in ATTRIBUTES:
         code = attr.get("code")
         if code in HW.HABILIDADES_STATE.get("attrs", {}):
@@ -265,6 +306,13 @@ def draw_text(surface, text, font, color, pos, center=False):
     return rect
 
 
+def log_event(message):
+    try:
+        logging.info(message)
+    except Exception:
+        pass
+
+
 def window_to_canvas(pos, scale, offset):
     """Converte coordenadas da janela para a base; retorna None se fora da área válida."""
     x = (pos[0] - offset[0]) / scale
@@ -272,6 +320,77 @@ def window_to_canvas(pos, scale, offset):
     if 0 <= x <= BASE_WIDTH and 0 <= y <= BASE_HEIGHT:
         return (x, y)
     return None
+
+
+def show_loading_screen(message, progress=0.0):
+    WINDOW.fill(BLACK)
+    width, height = WINDOW.get_size()
+    draw_text(WINDOW, "Carregando GDO...", FONTS["lg"], WHITE, (width // 2, height // 2 - 60), center=True)
+    draw_text(WINDOW, message, FONTS["sm"], GRAY_70, (width // 2, height // 2 - 20), center=True)
+    bar_w = int(width * 0.6)
+    bar_h = 16
+    bar_x = (width - bar_w) // 2
+    bar_y = height // 2 + 10
+    bg_rect = pygame.Rect(bar_x, bar_y, bar_w, bar_h)
+    pygame.draw.rect(WINDOW, GRAY_50, bg_rect, border_radius=8)
+    progress = max(0.0, min(1.0, progress))
+    fill_rect = pygame.Rect(bar_x, bar_y, int(bar_w * progress), bar_h)
+    pygame.draw.rect(WINDOW, GREEN, fill_rect, border_radius=8)
+    pygame.draw.rect(WINDOW, WHITE, bg_rect, 2, border_radius=8)
+
+
+def initialize_loader_queue():
+    if LOADER_STATE.get("pending"):
+        return
+    modules = [
+        ("habilidades_window", "HW"),
+        ("anotacoes_window", "AW"),
+        ("inventario_window", "IW"),
+    ]
+    LOADER_STATE["pending"] = modules
+    LOADER_STATE["total"] = len(modules)
+    LOADER_STATE["loaded"] = 0
+    LOADER_STATE["progress"] = 0.0
+    LOADER_STATE["message"] = "Preparando carregamento..."
+    log_event("Fila de carregamento inicializada")
+
+
+def load_next_module_step():
+    if PANELS_READY or LOADER_STATE.get("error"):
+        return
+    pending = LOADER_STATE.get("pending", [])
+    if not pending:
+        return
+    mod_name, alias = pending.pop(0)
+    try:
+        log_event(f"Iniciando importacao de {mod_name}")
+        module = importlib.import_module(mod_name)
+        globals()[alias] = module
+        LOADER_STATE["loaded"] += 1
+        total = max(1, LOADER_STATE.get("total", 1))
+        LOADER_STATE["progress"] = LOADER_STATE["loaded"] / total
+        LOADER_STATE["message"] = f"{mod_name} carregado ({LOADER_STATE['loaded']}/{total})"
+        log_event(f"Modulo {mod_name} importado com sucesso")
+    except Exception as exc:
+        LOADER_STATE["error"] = str(exc)
+        logging.exception("Erro ao importar modulo %s", mod_name)
+
+
+def finalize_panels_if_ready():
+    global PANELS_READY
+    if PANELS_READY or LOADER_STATE.get("error"):
+        return
+    if LOADER_STATE.get("pending"):
+        return
+    if not (HW and AW and IW):
+        return
+    EMBED_STATE["hab_surf"] = pygame.Surface((HW.WIDTH, HW.HEIGHT))
+    EMBED_STATE["notes_surf"] = pygame.Surface((AW.WIDTH, AW.HEIGHT))
+    EMBED_STATE["inv_surf"] = pygame.Surface((IW.WIDTH, IW.HEIGHT))
+    PANELS_READY = True
+    log_event("Superficies dos paineis criadas e prontas")
+    LOADER_STATE["message"] = "Painéis carregados."
+    LOADER_STATE["progress"] = 1.0
 
 
 def wrap_text(text, font, max_width):
@@ -1027,6 +1146,10 @@ def draw_inventory_panel(surface):
     pygame.draw.rect(surface, WHITE, content_rect, 1)
     SIDE_PANEL_STATE["embed_rect"] = None
 
+    if not PANELS_READY or not (HW and AW and IW):
+        draw_text(surface, "Carregando paineis...", FONTS["md"], WHITE, content_rect.center, center=True)
+        return
+
     active_tab = SIDE_PANEL_STATE["active_tab"]
     if active_tab == "HABILIDADES":
         sync_attrs_to_habilidades()
@@ -1039,6 +1162,13 @@ def draw_inventory_panel(surface):
         rects = AW.draw_notes_panel(EMBED_STATE["notes_surf"], AW.NOTES_STATE)
         EMBED_STATE["notes_rects"] = rects
         scaled = pygame.transform.smoothscale(EMBED_STATE["notes_surf"], content_rect.size)
+        surface.blit(scaled, content_rect)
+        SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
+    elif active_tab == "INVENTARIO":
+        IW.INVENTARIO_STATE["strength"] = get_attribute_value("FOR")
+        rects = IW.draw_inventory_panel(EMBED_STATE["inv_surf"], IW.INVENTARIO_STATE)
+        EMBED_STATE["inv_rects"] = rects
+        scaled = pygame.transform.smoothscale(EMBED_STATE["inv_surf"], content_rect.size)
         surface.blit(scaled, content_rect)
         SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
     else:
@@ -1306,6 +1436,9 @@ def apply_effort_delta(delta):
 
 def main():
     global WINDOW
+    initialize_loader_queue()
+    log_event("Aplicacao principal iniciada")
+
     # Estado simples dos atributos
     for attr in ATTRIBUTES:
         attr["value"] = 0
@@ -1322,6 +1455,9 @@ def main():
 
     running = True
     while running:
+        if not PANELS_READY and not LOADER_STATE.get("error"):
+            load_next_module_step()
+        finalize_panels_if_ready()
         scale, offset = calc_transform(WINDOW.get_size())
         # Atualiza hovers com base na posição atual do mouse
         mouse_base = window_to_canvas(pygame.mouse.get_pos(), scale, offset)
@@ -1346,7 +1482,10 @@ def main():
                 WINDOW = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
             elif event.type == pygame.TEXTINPUT:
                 current_tab = SIDE_PANEL_STATE.get("active_tab")
-                if current_tab == "ANOTACOES":
+                if current_tab == "INVENTARIO" and IW is not None:
+                    if IW.handle_text_input(event, IW.INVENTARIO_STATE):
+                        continue
+                if current_tab == "ANOTACOES" and AW is not None:
                     AW.handle_text_input(event, AW.NOTES_STATE)
                     continue
             elif event.type == pygame.KEYDOWN:
@@ -1354,12 +1493,16 @@ def main():
                     running = False
                     continue
                 current_tab = SIDE_PANEL_STATE.get("active_tab")
-                if current_tab == "HABILIDADES":
+                if current_tab == "HABILIDADES" and HW is not None:
                     handled = HW.handle_key(event, HW.HABILIDADES_STATE)
                     if handled:
                         continue
-                if current_tab == "ANOTACOES":
+                if current_tab == "ANOTACOES" and AW is not None:
                     handled = AW.handle_key(event, AW.NOTES_STATE)
+                    if handled:
+                        continue
+                if current_tab == "INVENTARIO" and IW is not None:
+                    handled = IW.handle_key(event, IW.INVENTARIO_STATE)
                     if handled:
                         continue
                 if NOTE_STATE["focus"]:
@@ -1409,6 +1552,7 @@ def main():
                     embed_rect = SIDE_PANEL_STATE.get("embed_rect")
                     if (
                         current_tab == "HABILIDADES"
+                        and HW is not None
                         and embed_rect
                         and embed_rect.collidepoint(pos_base)
                         and EMBED_STATE.get("hab_rects")
@@ -1420,6 +1564,7 @@ def main():
                         continue
                     if (
                         current_tab == "ANOTACOES"
+                        and AW is not None
                         and embed_rect
                         and embed_rect.collidepoint(pos_base)
                         and EMBED_STATE.get("notes_rects")
@@ -1427,6 +1572,17 @@ def main():
                         rel_x = (pos_base[0] - embed_rect.x) * AW.WIDTH / embed_rect.width
                         rel_y = (pos_base[1] - embed_rect.y) * AW.HEIGHT / embed_rect.height
                         AW.handle_mouse((rel_x, rel_y), EMBED_STATE["notes_rects"], AW.NOTES_STATE)
+                        continue
+                    if (
+                        current_tab == "INVENTARIO"
+                        and IW is not None
+                        and embed_rect
+                        and embed_rect.collidepoint(pos_base)
+                        and EMBED_STATE.get("inv_rects")
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * IW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * IW.HEIGHT / embed_rect.height
+                        IW.handle_mouse((rel_x, rel_y), EMBED_STATE["inv_rects"], IW.INVENTARIO_STATE)
                         continue
 
                     prev_focus = EFFORT_STATE["focus"]
@@ -1468,10 +1624,11 @@ def main():
                             break
                     if NOTE_STATE["send_rect"] and NOTE_STATE["send_rect"].collidepoint(pos_base):
                         _note = send_note_payload()
-                        try:
-                            AW.ingest_incoming_note(_note)
-                        except Exception:
-                            pass
+                        if AW is not None:
+                            try:
+                                AW.ingest_incoming_note(_note)
+                            except Exception:
+                                pass
                         NOTE_STATE["title"] = ""
                         NOTE_STATE["subject"] = ""
                         NOTE_STATE["body"] = ""
@@ -1523,7 +1680,7 @@ def main():
                 pos_base = window_to_canvas(mouse_pos, scale, offset)
                 handled_wheel = False
                 current_tab = SIDE_PANEL_STATE.get("active_tab")
-                if current_tab == "ANOTACOES":
+                if current_tab == "ANOTACOES" and AW is not None:
                     embed_rect = SIDE_PANEL_STATE.get("embed_rect")
                     rects = EMBED_STATE.get("notes_rects")
                     if (
@@ -1537,12 +1694,39 @@ def main():
                         handled_wheel = AW.handle_mousewheel(event.y, rects, AW.NOTES_STATE, (rel_x, rel_y))
                 if handled_wheel:
                     continue
+                if current_tab == "INVENTARIO" and IW is not None:
+                    embed_rect = SIDE_PANEL_STATE.get("embed_rect")
+                    rects = EMBED_STATE.get("inv_rects")
+                    if (
+                        pos_base
+                        and embed_rect
+                        and rects
+                        and embed_rect.collidepoint(pos_base)
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * IW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * IW.HEIGHT / embed_rect.height
+                        handled = IW.handle_mousewheel(event.y, rects, IW.INVENTARIO_STATE, (rel_x, rel_y))
+                        if handled:
+                            continue
                 if pos_base and "body" in NOTE_STATE["rects"]:
                     body_rect = NOTE_STATE["rects"]["body"]
                     if body_rect.collidepoint(pos_base):
                         NOTE_STATE["scroll"] = max(
                             0, min(NOTE_STATE["max_scroll"], NOTE_STATE["scroll"] - event.y * 2)
                         )
+        if not PANELS_READY:
+            message = LOADER_STATE.get("message", "Carregando...")
+            progress = LOADER_STATE.get("progress", 0.0)
+            if LOADER_STATE.get("error"):
+                message = f"Erro ao carregar: {LOADER_STATE['error']}"
+                progress = 1.0
+                if not LOADER_STATE.get("reported_error"):
+                    log_event(f"Erro reportado durante carregamento: {LOADER_STATE['error']}")
+                    LOADER_STATE["reported_error"] = True
+            show_loading_screen(message, progress)
+            pygame.display.flip()
+            CLOCK.tick(30)
+            continue
 
         update_dice_roll()
         # Desenha na canvas base
@@ -1561,11 +1745,16 @@ def main():
         WINDOW.fill(BLACK)
         WINDOW.blit(scaled_surface, offset)
         pygame.display.flip()
-        CLOCK.tick_busy_loop(FPS)
+        CLOCK.tick(FPS)
 
     pygame.quit()
+    log_event("Aplicacao finalizada")
     sys.exit()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        logging.exception("Erro fatal na aplicacao principal")
+        raise

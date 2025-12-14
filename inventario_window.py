@@ -20,7 +20,7 @@ RED = (210, 60, 60)
 
 pygame.init()
 pygame.display.set_caption("Painel de Inventario (demo)")
-WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+WINDOW = None
 CLOCK = pygame.time.Clock()
 
 FONTS = {
@@ -31,7 +31,7 @@ FONTS = {
     "lg": pygame.font.SysFont("arial", 26, bold=True),
 }
 
-CATEGORIES = ["Armas", "Municao", "Protecao", "Magikos", "Coletaveis", "Itens chave", "Componentes"]
+CATEGORIES = ["Armas","Equipamentos", "Protecao", "Magikos", "Coletaveis", "Municao", "Componentes"]
 
 # Itens de exemplo removidos; lista inicia vazia para uso real.
 DEFAULT_ITEMS = []
@@ -44,9 +44,10 @@ OPTION_VALUES = {
     "empunhadura": ["---", "Leve", "Uma mao", "Duas maos"],
     "dano": ["---", "1D4", "1D6", "1D8", "1D10", "1D12", "1D20", "1D100"],
     "protecao": ["---", "1", "2", "3", "4", "5"],
+    "modificador": ["---", "+1", "+2", "+3", "+4", "+5"],
 }
 
-OPTION_FIELDS = {"space", "tipo", "alcance", "empunhadura", "dano", "protecao", "category"}
+OPTION_FIELDS = {"space", "tipo", "alcance", "empunhadura", "dano", "protecao", "modificador", "category"}
 
 
 def _normalize_text(txt):
@@ -66,8 +67,8 @@ def normalize_category_key(category):
         return "magikos"
     if cat.startswith("colet"):
         return "coletaveis"
-    if "chave" in cat:
-        return "itens chave"
+    if cat.startswith("equip"):
+        return "equipamentos"
     if cat.startswith("comp"):
         return "componentes"
     return cat
@@ -83,7 +84,9 @@ def get_allowed_option_fields(category):
         return {"space", "protecao"}
     if cat == "magikos":
         return {"space", "tipo", "dano"}
-    if cat in ("coletaveis", "itens chave", "componentes"):
+    if cat == "equipamentos":
+        return {"space", "tipo", "modificador"}
+    if cat in ("coletaveis", "componentes"):
         return {"space"}
     return set(OPTION_FIELDS) - {"category"}
 
@@ -124,7 +127,15 @@ def get_category_options(category, field):
         if field == "dano":
             return OPTION_VALUES["dano"]
         return []
-    if cat in ("coletaveis", "itens chave", "componentes"):
+    if cat == "equipamentos":
+        if field == "space":
+            return ["2", "4"]
+        if field == "tipo":
+            return ["+espaco"]
+        if field == "modificador":
+            return OPTION_VALUES["modificador"]
+        return []
+    if cat in ("coletaveis", "componentes"):
         if field == "space":
             return ["---", "1", "2", "3", "4", "5"]
         return []
@@ -177,6 +188,7 @@ def make_blank_item(state):
         "empunhadura": OPTION_VALUES["empunhadura"][0],
         "dano": OPTION_VALUES["dano"][0],
         "protecao": OPTION_VALUES["protecao"][0],
+        "modificador": OPTION_VALUES["modificador"][0],
         "descricao": "",
         "localizacao": "",
         "info1": "",
@@ -232,6 +244,7 @@ def build_item_from_form(state, form):
     item["empunhadura"] = (form.get("empunhadura") or item["empunhadura"]).strip() or OPTION_VALUES["empunhadura"][0]
     item["dano"] = (form.get("dano") or item["dano"]).strip() or OPTION_VALUES["dano"][0]
     item["protecao"] = (form.get("protecao") or item["protecao"]).strip() or OPTION_VALUES["protecao"][0]
+    item["modificador"] = (form.get("modificador") or item["modificador"]).strip() or OPTION_VALUES["modificador"][0]
     item["descricao"] = form.get("descricao") or ""
     item["localizacao"] = (form.get("localizacao") or "").strip()
     item["info1"] = form.get("info1") or ""
@@ -401,8 +414,23 @@ def get_total_weight(state):
 
 
 def get_weight_limit(state):
-    base = state.get("base_limit", 10)
-    return max(0, base + state.get("weight_bonus", 0))
+    strength = safe_int(state.get("strength", 0))
+    bonus = safe_int(state.get("weight_bonus", 0))
+    if strength == 0:
+        limit = 1 + strength
+    if strength == 1:
+        limit = 2 + strength
+    if strength == 2:
+        limit = 2 + strength
+    if strength == 3:
+        limit = 3 + strength
+    if strength == 4:
+        limit = 4 + strength
+    if strength == 5:
+        limit = 5 + strength
+    if strength == 6:
+        limit = 6 + strength
+    return max(0, limit + bonus)
 
 
 def get_best_protection(state):
@@ -631,6 +659,7 @@ def draw_left_detail(surface, detail_rect, state, rects):
         ("Categoria", clean_option(item.get("category", ""))),
         ("Espaco", clean_option(item.get("space", ""))),
         ("Tipo", clean_option(item.get("tipo", ""))),
+        ("Modificador", clean_option(item.get("modificador", ""))),
         ("Alcance", clean_option(item.get("alcance", ""))),
         ("Punho", clean_option(item.get("empunhadura", ""))),
         ("Dano", clean_option(item.get("dano", ""))),
@@ -828,6 +857,7 @@ def draw_modal(surface, state):
         ("category", "Categoria"),
         ("space", "Espaco"),
         ("tipo", "Tipo"),
+        ("modificador", "Modificador"),
         ("alcance", "Alcance"),
         ("empunhadura", "Punho"),
         ("dano", "Dano"),
@@ -1064,11 +1094,14 @@ def draw_item_list(surface, list_rect, state):
         text_x = image_rect.right + 10
         content_w = row_rect.right - text_x - 10
         name = item.get("name", "Sem nome")
-        cat = clean_option(item.get("category", ""))
+        category_value = item.get("category", "")
+        cat = clean_option(category_value)
+        cat_key = normalize_category_key(category_value or "")
         dano = clean_option(item.get("dano", ""))
         alcance = clean_option(item.get("alcance", ""))
         protecao = clean_option(item.get("protecao", ""))
         emp = clean_option(item.get("empunhadura", ""))
+        modificador = clean_option(item.get("modificador", ""))
         desc = item.get("descricao", "") or ""
         # Nome (laranja)
         name_shown = ellipsize(name, FONTS["sm_b"], max(20, content_w // 2 - 8))
@@ -1085,6 +1118,8 @@ def draw_item_list(surface, list_rect, state):
             draw_text(surface, f"Alcance: {alcance}", FONTS["xs"], GREEN, (text_x, green_y))
         elif protecao:
             draw_text(surface, f"Protecao: {protecao}", FONTS["xs"], GREEN, (text_x, green_y))
+        if modificador and cat_key == "equipamentos":
+            draw_text(surface, f"Mod: {modificador}", FONTS["xs"], PURPLE, (text_x, green_y + 12))
         # Punho (amarelo)
         if emp:
             draw_text(surface, f"Punho: {emp}", FONTS["xs"], ORANGE, (text_x + content_w // 2, y + 10))
@@ -1427,6 +1462,7 @@ def make_default_state():
         "modal": None,
         "scrolls": {"descricao": 0, "info1": 0, "info2": 0},
         "scroll_max": {"descricao": 0, "info1": 0, "info2": 0},
+        "strength": 0,
     }
 
 
@@ -1434,6 +1470,9 @@ INVENTARIO_STATE = make_default_state()
 
 
 def main():
+    global WINDOW
+    WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Painel de Inventario (demo)")
     running = True
     while running:
         rects = draw_inventory_panel(WINDOW, INVENTARIO_STATE)

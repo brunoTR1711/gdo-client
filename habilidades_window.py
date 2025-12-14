@@ -20,7 +20,7 @@ RED = (200, 40, 40)
 
 pygame.init()
 pygame.display.set_caption("Painel de Habilidades (demo)")
-WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+WINDOW = None
 CLOCK = pygame.time.Clock()
 
 FONTS = {
@@ -709,6 +709,9 @@ def handle_key(event, state):
 
 
 def main():
+    global WINDOW
+    WINDOW = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Painel de Habilidades (demo)")
     running = True
     while running:
         rects = draw_habilidades_panel(WINDOW, HABILIDADES_STATE)
