@@ -45,9 +45,10 @@ OPTION_VALUES = {
     "dano": ["---", "1D4", "1D6", "1D8", "1D10", "1D12", "1D20", "1D100"],
     "protecao": ["---", "1", "2", "3", "4", "5"],
     "modificador": ["---", "+1", "+2", "+3", "+4", "+5"],
+    "Limite de uso": ["---", "1", "2", "3", "4", "5"],
 }
 
-OPTION_FIELDS = {"space", "tipo", "alcance", "empunhadura", "dano", "protecao", "modificador", "category"}
+OPTION_FIELDS = {"space", "tipo", "alcance", "empunhadura", "dano", "protecao", "modificador", "category", "Limite de uso"}
 
 
 def _normalize_text(txt):
@@ -85,7 +86,7 @@ def get_allowed_option_fields(category):
     if cat == "magikos":
         return {"space", "tipo", "dano"}
     if cat == "equipamentos":
-        return {"space", "tipo", "modificador"}
+        return {"space", "tipo", "modificador","Limite de uso"}
     if cat in ("coletaveis", "componentes"):
         return {"space"}
     return set(OPTION_FIELDS) - {"category"}
@@ -129,16 +130,19 @@ def get_category_options(category, field):
         return []
     if cat == "equipamentos":
         if field == "space":
-            return ["2", "4"]
+            return ["1","2", "3", "4"]
         if field == "tipo":
-            return ["+espaco"]
+            return ["+Vigor", "+força", "+agilidade", "+intelecto", "+Presença", "+vida","+PE","+Sanidade","+espaço"]
         if field == "modificador":
             return OPTION_VALUES["modificador"]
+        if field == "Limite de uso":
+            return OPTION_VALUES["Limite de uso"]
         return []
     if cat in ("coletaveis", "componentes"):
         if field == "space":
             return ["---", "1", "2", "3", "4", "5"]
         return []
+    
     return base
 
 
@@ -189,6 +193,7 @@ def make_blank_item(state):
         "dano": OPTION_VALUES["dano"][0],
         "protecao": OPTION_VALUES["protecao"][0],
         "modificador": OPTION_VALUES["modificador"][0],
+        "Limite de uso": OPTION_VALUES["Limite de uso"][0],
         "descricao": "",
         "localizacao": "",
         "info1": "",
@@ -245,6 +250,7 @@ def build_item_from_form(state, form):
     item["dano"] = (form.get("dano") or item["dano"]).strip() or OPTION_VALUES["dano"][0]
     item["protecao"] = (form.get("protecao") or item["protecao"]).strip() or OPTION_VALUES["protecao"][0]
     item["modificador"] = (form.get("modificador") or item["modificador"]).strip() or OPTION_VALUES["modificador"][0]
+    item["Limite de uso"] = (form.get("Limite de uso") or item["Limite de uso"]).strip() or OPTION_VALUES["Limite de uso"][0]
     item["descricao"] = form.get("descricao") or ""
     item["localizacao"] = (form.get("localizacao") or "").strip()
     item["info1"] = form.get("info1") or ""
@@ -416,7 +422,7 @@ def get_total_weight(state):
 def get_weight_limit(state):
     strength = safe_int(state.get("strength", 0))
     bonus = safe_int(state.get("weight_bonus", 0))
-    if strength == 0:
+    if strength <= 0:
         limit = 1 + strength
     if strength == 1:
         limit = 2 + strength
@@ -660,6 +666,7 @@ def draw_left_detail(surface, detail_rect, state, rects):
         ("Espaco", clean_option(item.get("space", ""))),
         ("Tipo", clean_option(item.get("tipo", ""))),
         ("Modificador", clean_option(item.get("modificador", ""))),
+        ("Limite de uso", clean_option(item.get("Limite de uso", ""))),
         ("Alcance", clean_option(item.get("alcance", ""))),
         ("Punho", clean_option(item.get("empunhadura", ""))),
         ("Dano", clean_option(item.get("dano", ""))),
@@ -858,6 +865,7 @@ def draw_modal(surface, state):
         ("space", "Espaco"),
         ("tipo", "Tipo"),
         ("modificador", "Modificador"),
+        ("Limite de uso", "Limite de uso"),
         ("alcance", "Alcance"),
         ("empunhadura", "Punho"),
         ("dano", "Dano"),
@@ -1102,6 +1110,7 @@ def draw_item_list(surface, list_rect, state):
         protecao = clean_option(item.get("protecao", ""))
         emp = clean_option(item.get("empunhadura", ""))
         modificador = clean_option(item.get("modificador", ""))
+        limite_uso = clean_option(item.get("Limite de uso", ""))
         desc = item.get("descricao", "") or ""
         # Nome (laranja)
         name_shown = ellipsize(name, FONTS["sm_b"], max(20, content_w // 2 - 8))
@@ -1118,8 +1127,12 @@ def draw_item_list(surface, list_rect, state):
             draw_text(surface, f"Alcance: {alcance}", FONTS["xs"], GREEN, (text_x, green_y))
         elif protecao:
             draw_text(surface, f"Protecao: {protecao}", FONTS["xs"], GREEN, (text_x, green_y))
+        if "tipo" and cat_key == "equipamentos":
+            draw_text(surface, f"bônus: {category_value}", FONTS["xs"], RED, (text_x, green_y - 1))
         if modificador and cat_key == "equipamentos":
-            draw_text(surface, f"Mod: {modificador}", FONTS["xs"], PURPLE, (text_x, green_y + 12))
+            draw_text(surface, f"Mod: {modificador}", FONTS["xs"], GREEN, (text_x, green_y + 1))
+        if limite_uso:
+            draw_text(surface, f"Limite de uso: {limite_uso}", FONTS["xs"], ORANGE, (text_x, green_y + 12))
         # Punho (amarelo)
         if emp:
             draw_text(surface, f"Punho: {emp}", FONTS["xs"], ORANGE, (text_x + content_w // 2, y + 10))

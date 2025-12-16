@@ -1,10 +1,10 @@
-[2025-12-14 00:54:10,632] INFO - Fila de carregamento inicializada
-[2025-12-14 00:54:10,632] INFO - Aplicacao principal iniciada
-[2025-12-14 00:54:10,632] INFO - Iniciando importacao de habilidades_window
-[2025-12-14 00:54:18,649] INFO - Modulo habilidades_window importado com sucesso
-[2025-12-14 00:54:18,701] INFO - Iniciando importacao de anotacoes_window
-[2025-12-14 00:54:26,729] INFO - Modulo anotacoes_window importado com sucesso
-[2025-12-14 00:54:26,753] INFO - Iniciando importacao de inventario_window
-[2025-12-14 00:54:34,781] INFO - Modulo inventario_window importado com sucesso
-[2025-12-14 00:54:34,786] INFO - Superficies dos paineis criadas e prontas
-[2025-12-14 00:54:52,731] INFO - Aplicacao finalizada
+[2025-12-16 18:26:03,648] INFO - Fila de carregamento inicializada
+[2025-12-16 18:26:03,648] INFO - Aplicacao principal iniciada
+[2025-12-16 18:26:03,648] INFO - Iniciando importacao de habilidades_window
+[2025-12-16 18:26:03,653] INFO - Modulo habilidades_window importado com sucesso
+[2025-12-16 18:26:03,672] INFO - Iniciando importacao de anotacoes_window
+[2025-12-16 18:26:03,678] INFO - Modulo anotacoes_window importado com sucesso
+[2025-12-16 18:26:03,705] INFO - Iniciando importacao de inventario_window
+[2025-12-16 18:26:03,725] INFO - Modulo inventario_window importado com sucesso
+[2025-12-16 18:26:03,727] INFO - Superficies dos paineis criadas e prontas
+[2025-12-16 18:35:23,782] INFO - Aplicacao finalizada

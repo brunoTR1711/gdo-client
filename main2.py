@@ -29,7 +29,7 @@ START_HEIGHT = 600
 FPS = 60
 
 pygame.init()
-pygame.display.set_caption("GDO - Coluna de Atributos")
+pygame.display.set_caption("GDO - CLIENT")
 
 # Janela real (redimensionável) e canvas base para manter proporção
 WINDOW = pygame.display.set_mode((START_WIDTH, START_HEIGHT), pygame.RESIZABLE)
