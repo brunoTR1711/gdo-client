@@ -128,7 +128,8 @@ HABILIDADES_STATE = {
     "show_form": False,
     "cursor": {"name": 0, "resumo": 0, "descricao": 0, "resist_text": 0, "prof_text": 0},
     "attrs": {"AGI": 0, "FOR": 0, "VIG": 0},
-    "armor_bonus": 0,
+    "armor_bonus": 0,  # bônus da armadura aplicado ao Bloqueio
+    "armor_block_reduction": 0,
     "skills_trained": {"ESQUIVA": False, "BLOQUEIO": False, "CONTRA": False},
     "resist_text": "",
     "prof_text": "",
@@ -145,29 +146,33 @@ TEXT_FIELDS = {"name", "resumo", "descricao"}
 TOP_TEXT_FIELDS = {"resist_text", "prof_text"}
 
 DEF_CONFIG = [
-    {"key": "ESQUIVA", "label": "ESQUIVA (reflexo)", "attr": "AGI"},
-    {"key": "BLOQUEIO", "label": "BLOQUEIO (fortitude)", "attr": "FOR"},
-    {"key": "CONTRA", "label": "CONTRA-ATAQUE (luta)", "attr": "FOR"},
+    {"key": "ESQUIVA", "label": "ESQUIVA", "attr": "AGI"},
+    {"key": "BLOQUEIO", "label": "BLOQUEIO (1PE)", "attr": "FOR"},
+    {"key": "CONTRA", "label": "CONTRA-ATAQUE", "attr": "FOR"},
 ]
 
 
 def compute_base_defense(state):
     vig = state.get("attrs", {}).get("VIG", 0) or 0
-    armor_bonus = state.get("armor_bonus", 0) or 0
-    return 10 + vig + armor_bonus
+    return 10 + vig
 
 
 def compute_defense_value(state, key, attr_key):
     attr_val = state.get("attrs", {}).get(attr_key, 0) or 0
     trained = state.get("skills_trained", {}).get(key, False)
+    if key == "BLOQUEIO":
+        train_bonus = 1 if trained else 0
+        armor_bonus = state.get("armor_bonus", 0) if trained else 0
+        armor_bonus = armor_bonus or 0
+        return attr_val + train_bonus + armor_bonus, attr_val, train_bonus, armor_bonus
     train_bonus = 2 if trained else 0
     if key == "CONTRA":
         parts = []
         if train_bonus:
             parts.append("")
-        return " + ".join(parts), attr_val, train_bonus
+        return " + ".join(parts), attr_val, train_bonus, 0
     base = compute_base_defense(state)
-    return base + attr_val + train_bonus, attr_val, train_bonus
+    return base + attr_val + train_bonus, attr_val, train_bonus, 0
 
 
 def draw_text(surface, text, font, color, pos, center=False):
@@ -306,10 +311,10 @@ def draw_habilidades_panel(surface, state):
     draw_pentagon(surface, pent_center, 56)
     base_def = compute_base_defense(state)
     vig_val = state.get("attrs", {}).get("VIG", 0) or 0
-    armor_bonus = state.get("armor_bonus", 0) or 0
     draw_text(surface, f"{base_def}", FONTS["sm_b"], WHITE, (pent_center[0], pent_center[1] - 14), center=True)
-    base_label = f"10 + VIG({vig_val}) + Arm({armor_bonus})"
+    base_label = f"10 + VIG({vig_val})"
     draw_text(surface, base_label, FONTS["xs"], WHITE, (pent_center[0], pent_center[1] + 10), center=True)
+    armor_reduction = state.get("armor_block_reduction", 0) or 0
 
     # Defenses (ligadas a pericias)
     def_y = content_y + 10
@@ -320,7 +325,7 @@ def draw_habilidades_panel(surface, state):
     for idx, cfg in enumerate(DEF_CONFIG):
         y = def_y + idx * 34
         trained = state.get("skills_trained", {}).get(cfg["key"], False)
-        val, attr_val, train_bonus = compute_defense_value(state, cfg["key"], cfg["attr"])
+        val, attr_val, train_bonus, armor_bonus = compute_defense_value(state, cfg["key"], cfg["attr"])
         draw_text(surface, cfg["label"], FONTS["sm_b"], WHITE, (label_x, y))
         cb_rect = pygame.Rect(label_x + 160, y, cb_size, cb_size)
         draw_checkbox(surface, cb_rect, trained)
@@ -330,10 +335,19 @@ def draw_habilidades_panel(surface, state):
             draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             mod_total = attr_val + train_bonus
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
+        elif cfg["key"] == "BLOQUEIO":
+            formula = ""
+            if armor_bonus:
+                formula += f" + Arm({armor_bonus:+})"
+            if armor_reduction:
+                formula += f" / -{armor_reduction} severidade"
+            draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
+            mod_total = attr_val + train_bonus + armor_bonus
+            draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
         else:
             formula_parts = []
             if train_bonus:
-                formula_parts.append("")
+                formula_parts.append(f"Treino {train_bonus:+}")
             formula = " + ".join(formula_parts)
             draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{val:02d}")

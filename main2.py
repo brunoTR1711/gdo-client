@@ -9,6 +9,7 @@ import pygame
 HW = None
 AW = None
 IW = None
+GW = None
 
 # Estado do carregador dos paineis externos
 LOADER_STATE = {
@@ -36,6 +37,8 @@ WINDOW = pygame.display.set_mode((START_WIDTH, START_HEIGHT), pygame.RESIZABLE)
 CANVAS = pygame.Surface((BASE_WIDTH, BASE_HEIGHT))
 CLOCK = pygame.time.Clock()
 
+FULLSCREEN_STATE = {"enabled": False, "windowed_size": (START_WIDTH, START_HEIGHT)}
+
 LOG_FILE = Path(__file__).with_name("gdo_client.log")
 logging.basicConfig(
     level=logging.INFO,
@@ -53,6 +56,7 @@ GRAY_70 = (140, 140, 140)
 WHITE = (255, 255, 255)
 PURPLE = (150, 60, 200)
 ORANGE = (240, 140, 0)
+GOLD = (240, 200, 40)
 GREEN = (0, 180, 0)
 RED = (210, 40, 40)
 
@@ -62,6 +66,7 @@ FONTS = {
     "sm": pygame.font.SysFont("arial", 14),
     "sm_b": pygame.font.SysFont("arial", 14, bold=True),
     "md": pygame.font.SysFont("arial", 18, bold=True),
+    "md+": pygame.font.SysFont("arial", 22, bold=True),
     "lg": pygame.font.SysFont("arial", 28, bold=True),
     "xl": pygame.font.SysFont("arial", 52, bold=True),
 }
@@ -98,13 +103,14 @@ SAN_SAVES = {"success": [False, False, False], "fail": [False, False, False]}
 SAN_SAVE_RECTS = []  # (type, idx, rect)
 
 # Esforço
+EFFORT_BASE = 4
 EFFORT_STATE = {
-    "current": 0,
-    "total": 0,
+    "current": EFFORT_BASE,
+    "total": EFFORT_BASE,
     "bonus": 0,
     "manual_total": False,
     "focus": None,  # "current" ou "total"
-    "buffers": {"current": "0", "total": "0", "bonus": "0"},
+    "buffers": {"current": str(EFFORT_BASE), "total": str(EFFORT_BASE), "bonus": "0"},
     "btn_rects": [],
     "input_rects": {},
 }
@@ -135,7 +141,7 @@ SKILLS = [
     {"name": "Crime*", "attr": "AGI", "cat": "FISICA", "requires_training": True, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Esquiva*", "attr": "AGI", "cat": "FISICA", "requires_training": True, "bonus": 2, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Contra-Ataque*", "attr": "FOR", "cat": "FISICA", "requires_training": True, "bonus": 2, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
-    {"name": "Bloqueio*", "attr": "FOR", "cat": "FISICA", "requires_training": True, "bonus": 2, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
+    {"name": "Bloqueio", "attr": "FOR", "cat": "FISICA", "requires_training": True, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     # Intelecto
     {"name": "Atualidade", "attr": "INT", "cat": "INTELECTO", "requires_training": False, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Sobrevivencia", "attr": "INT", "cat": "INTELECTO", "requires_training": False, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
@@ -148,18 +154,24 @@ SKILLS = [
     {"name": "Tatica*", "attr": "INT", "cat": "INTELECTO", "requires_training": True, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Tecnologia*", "attr": "INT", "cat": "INTELECTO", "requires_training": True, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
     # Sociais
-    {"name": "Adestramento", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
-    {"name": "Vontade", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
+    {"name": "Adestramento", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 2, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Enganacao", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
-    {"name": "Intimidacao", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 2, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
+    {"name": "Intimidacao", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 1, "bonus_choice": 2, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Percepcao", "attr": "PRE", "cat": "SOCIAL", "requires_training": False, "bonus": 1, "bonus_choice": 1, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Diplomacia*", "attr": "PRE", "cat": "SOCIAL", "requires_training": True, "bonus": 1, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Artes*", "attr": "PRE", "cat": "SOCIAL", "requires_training": True, "bonus": 2, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
     {"name": "Religiao*", "attr": "PRE", "cat": "SOCIAL", "requires_training": True, "bonus": 2, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
+    {"name": "Vontade*", "attr": "PRE", "cat": "SOCIAL", "requires_training": True, "bonus": 2, "bonus_choice": None, "trained": False, "rect": None, "choice_rects": None},
 ]
 
-DEFENSE_SKILL_MAP = {"ESQUIVA": "Esquiva*", "BLOQUEIO": "Bloqueio*", "CONTRA": "Contra-Ataque*"}
+DEFENSE_SKILL_MAP = {"ESQUIVA": "Esquiva*", "BLOQUEIO": "Bloqueio", "CONTRA": "Contra-Ataque*"}
 SKILL_DEFENSE_MAP = {v: k for k, v in DEFENSE_SKILL_MAP.items()}
+
+
+# Garante que todas as pericias iniciem desmarcadas/sem bonus selecionado
+for _skill in SKILLS:
+    _skill["trained"] = False
+    _skill["bonus_choice"] = None
 
 
 DICE_STATE = {
@@ -180,6 +192,8 @@ EMBED_STATE = {
     "notes_rects": None,
     "inv_surf": None,
     "inv_rects": None,
+    "geral_surf": None,
+    "geral_rects": None,
 }
 
 SIDE_PANEL_STATE = {
@@ -193,8 +207,13 @@ UI_STATE = {"hover_attr": None, "hover_skill": None}
 PANELS_READY = False
 
 
+def normalize_skill_name(name):
+    return str(name or "").replace("*", "").strip().lower()
+
+
 def find_skill_by_name(name):
-    return next((s for s in SKILLS if s["name"] == name), None)
+    target = normalize_skill_name(name)
+    return next((s for s in SKILLS if normalize_skill_name(s.get("name")) == target), None)
 
 
 def sync_skill_training_to_habilidades(skill_name, trained):
@@ -346,6 +365,7 @@ def initialize_loader_queue():
         ("habilidades_window", "HW"),
         ("anotacoes_window", "AW"),
         ("inventario_window", "IW"),
+        ("geral_window", "GW"),
     ]
     LOADER_STATE["pending"] = modules
     LOADER_STATE["total"] = len(modules)
@@ -382,11 +402,12 @@ def finalize_panels_if_ready():
         return
     if LOADER_STATE.get("pending"):
         return
-    if not (HW and AW and IW):
+    if not (HW and AW and IW and GW):
         return
     EMBED_STATE["hab_surf"] = pygame.Surface((HW.WIDTH, HW.HEIGHT))
     EMBED_STATE["notes_surf"] = pygame.Surface((AW.WIDTH, AW.HEIGHT))
     EMBED_STATE["inv_surf"] = pygame.Surface((IW.WIDTH, IW.HEIGHT))
+    EMBED_STATE["geral_surf"] = pygame.Surface((GW.WIDTH, GW.HEIGHT))
     PANELS_READY = True
     log_event("Superficies dos paineis criadas e prontas")
     LOADER_STATE["message"] = "Painéis carregados."
@@ -462,6 +483,9 @@ def roll_attribute(attr):
 
 
 def roll_skill(skill):
+    if normalize_skill_name(skill.get("name")) == "bloqueio":
+        roll_bloqueio(skill)
+        return
     # Skills marcadas com * exigem treino para teste.
     if skill.get("requires_training") and not skill.get("trained"):
         return
@@ -479,11 +503,256 @@ def roll_skill(skill):
     start_roll(entry)
 
 
+def safe_int(val, default=0):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_last_damage_entry():
+    entries = []
+    if DICE_STATE["current"]:
+        entries.append(DICE_STATE["current"])
+    entries.extend(DICE_STATE["history"])
+    for entry in entries:
+        if entry.get("roll_type") == "damage":
+            return entry
+    return None
+
+
+def current_bloqueio_trained():
+    skill = find_skill_by_name("Bloqueio")
+    return bool(skill and skill.get("trained"))
+
+
+def current_armor_block_bonus():
+    """Retorna bônus da armadura aplicável ao teste de Bloqueio."""
+    bonus = 0
+    try:
+        if HW is not None:
+            bonus = max(bonus, safe_int(HW.HABILIDADES_STATE.get("armor_bonus")))
+            bonus = max(bonus, safe_int(HW.HABILIDADES_STATE.get("armor_block_bonus")))
+    except Exception:
+        pass
+    try:
+        if IW is not None:
+            for item in IW.INVENTARIO_STATE.get("items", []):
+                bonus = max(bonus, safe_int(item.get("protecao")))
+    except Exception:
+        pass
+    return bonus
+
+
+def build_personagem_snapshot_for_bloqueio():
+    estado_text, _, _ = life_status()
+    armor_block_reduction = 0
+    try:
+        if HW is not None:
+            armor_block_reduction = safe_int(HW.HABILIDADES_STATE.get("armor_block_reduction"))
+    except Exception:
+        armor_block_reduction = 0
+    return {
+        "forca": get_attr_value("FOR"),
+        "treinado_bloqueio": current_bloqueio_trained(),
+        "esforco": max(0, EFFORT_STATE["current"] + EFFORT_STATE["bonus"]),
+        "estado": estado_text,
+        "armadura_bonus_bloqueio": current_armor_block_bonus(),
+        "armadura_reducao_severidade": armor_block_reduction,
+        "ataque_acertou": True,
+    }
+
+
+def calcular_bloqueio(personagem, severidade_dano, dados=None):
+    """
+    Aplica as regras de Bloqueio:
+    - exige treino e 1 PE
+    - proibido em Morrendo; penalidade -2 em Machucado
+    - teste 3D6 + Força +1 (treino) + armadura (quando houver)
+    - reduz severidade do dano conforme tabela da regra.
+    """
+    severity = None
+    damage_total = None
+    if isinstance(severidade_dano, dict):
+        raw_sev = severidade_dano.get("severidade", severidade_dano.get("valor"))
+        if raw_sev is not None:
+            severity = safe_int(raw_sev)
+        if "dano_total" in severidade_dano:
+            damage_total = safe_int(severidade_dano.get("dano_total"))
+    elif severidade_dano is not None:
+        severity = safe_int(severidade_dano)
+    severity_known = severity is not None or damage_total is not None
+    severity = max(0, severity or 0)
+    if damage_total is None:
+        damage_total = severity
+    damage_total = max(0, damage_total)
+    if severity == 0 and damage_total > 0:
+        severity = damage_total
+
+    attack_hit = bool(personagem.get("ataque_acertou", True))
+    mensagens = []
+    base_result = {
+        "permitido": False,
+        "severidade_inicial": severity,
+        "severidade_final": severity,
+        "dano_total": damage_total,
+        "dano_anulado": False,
+        "rolagem": [],
+        "total": 0,
+        "critico": False,
+        "mensagens": mensagens,
+        "gasto_esforco": 1,
+        "bonus_armadura": safe_int(personagem.get("armadura_bonus_bloqueio")),
+        "reducao_severidade": max(0, safe_int(personagem.get("armadura_reducao_severidade"))),
+        "penalidade_estado": 0,
+        "severidade_definida": severity_known,
+    }
+
+    if not attack_hit:
+        mensagens.append("Bloqueio não necessário: o ataque não acertou.")
+        base_result["mensagem_principal"] = mensagens[-1]
+        return base_result
+    if not personagem.get("treinado_bloqueio"):
+        mensagens.append("Bloqueio não permitido: perícia Bloqueio não treinada.")
+        base_result["mensagem_principal"] = mensagens[-1]
+        return base_result
+    effort_available = safe_int(personagem.get("esforco"), 0)
+    if effort_available < 1:
+        mensagens.append("Bloqueio não permitido: é preciso ter pelo menos 1 PE disponível.")
+        base_result["mensagem_principal"] = mensagens[-1]
+        return base_result
+    estado = str(personagem.get("estado", "")).upper()
+    if estado == "MORRENDO":
+        mensagens.append("Bloqueio não permitido: personagem está Morrendo.")
+        base_result["mensagem_principal"] = mensagens[-1]
+        return base_result
+
+    penalty_estado = -2 if estado == "MACHUCADO" else 0
+    base_result["penalidade_estado"] = penalty_estado
+    armor_bonus = base_result["bonus_armadura"]
+    reducao_severidade = base_result["reducao_severidade"]
+
+    dice = dados or roll_3d6()
+    dice_sum = sum(dice)
+    critico = dice == [1, 1, 1]
+    total = dice_sum + safe_int(personagem.get("forca")) + 1 + armor_bonus + penalty_estado
+    base_result.update(
+        {
+            "permitido": True,
+            "rolagem": dice,
+            "total": total,
+            "critico": critico,
+            "bonus_total": 1 + armor_bonus + penalty_estado,
+        }
+    )
+
+    if not severity_known:
+        mensagens.append("Severidade do dano não informada; usando rolagem apenas como referência.")
+
+    nova_severidade = severity
+    if severity > 0:
+        if total >= damage_total:
+            nova_severidade = 0
+        elif total >= severity + 5:
+            nova_severidade = max(0, severity - 2)
+        elif total >= severity:
+            nova_severidade = max(0, severity - 1)
+    if reducao_severidade and nova_severidade > 0:
+        nova_severidade = max(0, nova_severidade - reducao_severidade)
+        mensagens.append(f"Armadura reduz severidade em {reducao_severidade}.")
+    if critico:
+        nova_severidade += 1
+        mensagens.append("Falha crítica (1-1-1): severidade aumentada em +1.")
+
+    base_result["severidade_final"] = nova_severidade
+    base_result["dano_anulado"] = base_result["severidade_definida"] and nova_severidade <= 0
+    if base_result["dano_anulado"]:
+        mensagens.append("Dano anulado pelo Bloqueio.")
+    else:
+        if severity > 0:
+            mensagens.append(f"Severidade ajustada de {severity} para {nova_severidade}.")
+        else:
+            mensagens.append(f"Total do Bloqueio: {total}.")
+    base_result["mensagem_principal"] = mensagens[-1]
+    return base_result
+
+
+def build_bloqueio_roll_entry(block_result, personagem):
+    dice = block_result.get("rolagem") or [0, 0, 0]
+    entry = {
+        "label": "Bloqueio (1 PE)",
+        "roll_type": "bloqueio",
+        "skill_name": "Bloqueio",
+        "attr_code": "FOR",
+        "attr_value": personagem.get("forca", 0),
+        "skill_bonus": block_result.get("bonus_total", 1),
+        "trained": personagem.get("treinado_bloqueio", False),
+        "dice": dice,
+        "total": block_result.get("total", "--"),
+        "dice_config": {"count": len(dice), "sides": 6},
+        "block_result": block_result,
+    }
+    return entry
+
+
+def roll_bloqueio(skill, severidade_dano=None):
+    personagem = build_personagem_snapshot_for_bloqueio()
+    if severidade_dano is None:
+        last_damage = get_last_damage_entry()
+        if last_damage:
+            severidade_dano = {
+                "severidade": last_damage.get("total", 0),
+                "dano_total": last_damage.get("total", 0),
+            }
+    result = calcular_bloqueio(personagem, severidade_dano)
+    entry = build_bloqueio_roll_entry(result, personagem)
+    if not result.get("permitido"):
+        record_roll(entry)
+        log_event(result.get("mensagem_principal", "Bloqueio indisponível"))
+        return
+    if not spend_effort_points(result.get("gasto_esforco", 1)):
+        result["permitido"] = False
+        result["mensagens"].append("Bloqueio abortado: esforço insuficiente para pagar 1 PE.")
+        result["mensagem_principal"] = result["mensagens"][-1]
+        entry = build_bloqueio_roll_entry(result, personagem)
+        record_roll(entry)
+        return
+    log_event(f"Bloqueio iniciado. Total previsto: {result.get('total')}")
+    start_roll(entry)
+
+
 def roll_summary(entry):
     dice_str = "+".join(str(d) for d in entry["dice"])
     label = entry.get("label", entry["roll_type"].title())
     total = entry["total"]
     roll_type = entry.get("roll_type")
+    if roll_type == "bloqueio":
+        br = entry.get("block_result") or {}
+        if not br.get("permitido"):
+            msg = br.get("mensagem_principal") or "Bloqueio não realizado"
+            return f"{label}: {msg}"
+        mods = [f"FOR({entry.get('attr_value', 0):+})", "Treino(+1)"]
+        bonus_arm = br.get("bonus_armadura", 0)
+        if bonus_arm:
+            mods.append(f"Armadura({bonus_arm:+})")
+        pen_estado = br.get("penalidade_estado", 0)
+        if pen_estado:
+            mods.append(f"Estado({pen_estado:+})")
+        summary = f"{label}: 3D6({dice_str}) + {' + '.join(mods)} = {total}"
+        sev_inicial = br.get("severidade_inicial")
+        sev_final = br.get("severidade_final")
+        if br.get("severidade_definida") and sev_inicial is not None and sev_final is not None:
+            summary += f" | Severidade {sev_inicial}->{sev_final}"
+            if br.get("dano_anulado"):
+                summary += " (dano anulado)"
+        else:
+            summary += " | Severidade não informada"
+        extra_red = br.get("reducao_severidade", 0)
+        if extra_red:
+            summary += f" | Armadura reduz severidade em {extra_red}"
+        if br.get("critico"):
+            summary += " | Falha crítica"
+        return summary
     if roll_type in ("attribute", "skill"):
         parts = [
             f"3D6({dice_str})",
@@ -879,7 +1148,7 @@ def draw_vitals_panel(surface):
     card_h = 240
 
     # Painel VIDA com trilhas dinâmicas
-    life_rect = pygame.Rect(base_x + 0, base_y, card_w, card_h)
+    life_rect = pygame.Rect(base_x + 65, base_y, card_w, card_h)
     pygame.draw.rect(surface, BLACK, life_rect)
     pygame.draw.rect(surface, WHITE, life_rect, 2)
     draw_text(surface, "VIDA", FONTS["md"], WHITE, (life_rect.x + 10, life_rect.y + 8))
@@ -927,7 +1196,7 @@ def draw_vitals_panel(surface):
         draw_death_saves(surface, life_rect, y_start=death_y)
 
     # Painel SANIDADE (agora dinâmico)
-    san_rect = pygame.Rect(base_x + card_w + 10, base_y, card_w, card_h)
+    san_rect = pygame.Rect(base_x + card_w + 70, base_y, card_w, card_h)
     pygame.draw.rect(surface, BLACK, san_rect)
     pygame.draw.rect(surface, WHITE, san_rect, 2)
     draw_text(surface, "SANIDADE", FONTS["md"], WHITE, (san_rect.x + 10, san_rect.y + 8))
@@ -975,10 +1244,10 @@ def draw_vitals_panel(surface):
         draw_sanity_saves(surface, san_rect, y_start=sanity_y)
 
     # Esforço
-    effort_rect = pygame.Rect(base_x, base_y + card_h + 12, card_w * 2 + 10, 160)
+    effort_rect = pygame.Rect(base_x + 58, base_y + card_h + 12, card_w * 2 + 10, 160)
     pygame.draw.rect(surface, BLACK, effort_rect)
     pygame.draw.rect(surface, WHITE, effort_rect, 2)
-    draw_text(surface, "ESFORÇO", FONTS["md"], WHITE, (effort_rect.x + 10, effort_rect.y + 8))
+    draw_text(surface, "ESFORÇO", FONTS["sm_b"], WHITE, (effort_rect.x + 10, effort_rect.y + 8))
 
     int_value = get_attr_value("INT")
     sync_effort_with_int(int_value)
@@ -989,14 +1258,14 @@ def draw_vitals_panel(surface):
     bonus_rect = pygame.Rect(effort_rect.x + 360, label_y - 2, 60, 22)
     EFFORT_STATE["input_rects"] = {"current": current_rect, "total": total_rect, "bonus": bonus_rect}
 
-    draw_text(surface, "Atual", FONTS["xs"], WHITE, (effort_rect.x + 110, label_y))
-    draw_text(surface, "Total", FONTS["xs"], WHITE, (effort_rect.x + 232, label_y))
-    draw_text(surface, "Bônus", FONTS["xs"], WHITE, (effort_rect.x + 332, label_y))
+    draw_text(surface, "Atual", FONTS["sm"], WHITE, (effort_rect.x + 110, label_y))
+    draw_text(surface, "Total", FONTS["sm"], WHITE, (effort_rect.x + 232, label_y))
+    draw_text(surface, "Bônus", FONTS["sm"], WHITE, (effort_rect.x + 332, label_y))
     for field, rect in [("current", current_rect), ("total", total_rect), ("bonus", bonus_rect)]:
         pygame.draw.rect(surface, BLACK, rect)
         pygame.draw.rect(surface, ORANGE if EFFORT_STATE["focus"] == field else WHITE, rect, 1)
         buffer_text = EFFORT_STATE["buffers"][field]
-        draw_text(surface, buffer_text, FONTS["xs"], WHITE, rect.inflate(-6, -2).topleft)
+        draw_text(surface, buffer_text, FONTS["md"], WHITE, rect.inflate(-6, -2).topleft)
 
     # Indicador circular de esforço (lado esquerdo, maior)
     circle_center = (effort_rect.x + 60, effort_rect.y + 96)
@@ -1017,7 +1286,7 @@ def draw_vitals_panel(surface):
             6,
         )
     display_text = f"{effective_current}/{EFFORT_STATE['total']}"
-    draw_text(surface, display_text, FONTS["xs"], WHITE, circle_center, center=True)
+    draw_text(surface, display_text, FONTS["sm_b"], WHITE, circle_center, center=True)
 
     offsets = [-5, -2, -1, 1, 2, 5]
     btn_w, btn_h = 48, 18
@@ -1030,14 +1299,14 @@ def draw_vitals_panel(surface):
         brect = pygame.Rect(bx, by, btn_w, btn_h)
         pygame.draw.rect(surface, GRAY_30, brect)
         pygame.draw.rect(surface, GRAY_70, brect, 1)
-        draw_text(surface, f"{val:+}", FONTS["xs"], WHITE, brect.center, center=True)
+        draw_text(surface, f"{val:+}", FONTS["sm"], WHITE, brect.center, center=True)
         EFFORT_STATE["btn_rects"].append((brect, val))
 
 
 def draw_notes_panel(surface):
     panel_w = 360
     panel_h = 360
-    panel_x = 206 + 210 * 2 + 40  # ao lado do painel de esforço, sem sobreposição
+    panel_x = 250 + 210 * 2 + 40  # ao lado do painel de esforço, sem sobreposição
     panel_y = 14
     panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
     pygame.draw.rect(surface, BLACK, panel_rect)
@@ -1158,6 +1427,24 @@ def draw_inventory_panel(surface):
         scaled = pygame.transform.smoothscale(EMBED_STATE["hab_surf"], content_rect.size)
         surface.blit(scaled, content_rect)
         SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
+    elif active_tab == "GERAL":
+        attrs_dict = {a["code"]: a.get("value", 0) for a in ATTRIBUTES}
+        vida_text, _, _ = life_status()
+        san_text, _, _ = sanity_status()
+        IW.INVENTARIO_STATE["strength"] = get_attribute_value("FOR")
+        GW.update_from_sources(
+            attrs=attrs_dict,
+            hab_state=HW.HABILIDADES_STATE if HW else None,
+            inv_state=IW.INVENTARIO_STATE if IW else None,
+            skills=SKILLS,
+            vida=vida_text,
+            sanidade=san_text,
+        )
+        rects = GW.draw_geral_panel(EMBED_STATE["geral_surf"], GW.GERAL_STATE)
+        EMBED_STATE["geral_rects"] = rects
+        scaled = pygame.transform.smoothscale(EMBED_STATE["geral_surf"], content_rect.size)
+        surface.blit(scaled, content_rect)
+        SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
     elif active_tab == "ANOTACOES":
         rects = AW.draw_notes_panel(EMBED_STATE["notes_surf"], AW.NOTES_STATE)
         EMBED_STATE["notes_rects"] = rects
@@ -1198,19 +1485,22 @@ def draw_skills_panel(surface):
         pygame.draw.rect(surface, WHITE, header_rect, 1)
         draw_text(surface, cat_label, FONTS["sm"], WHITE, (col_x + 6, start_y + 4))
         y = start_y + 30
-        skills = [s for s in SKILLS if s["cat"] == cat_key]
+        # organiza para mostrar primeiro as que nao exigem treino, depois as obrigatorias
+        skills = sorted([s for s in SKILLS if s["cat"] == cat_key], key=lambda s: (s["requires_training"], s["name"].lower()))
         for s in skills:
             locked = s["requires_training"] and not s["trained"]
             is_hover = UI_STATE.get("hover_skill") == s["name"]
             text_color = PURPLE if (is_hover and not locked) else (GREEN if s["trained"] else (GRAY_50 if locked else WHITE))
+            if s["cat"] == "SOCIAL" and s.get("bonus_choice") == 2:
+                text_color = GOLD
             s["choice_rects"] = None
             s["rect"] = None
             s["name_rect"] = None
             name_text = s["name"]
             attr_x = col_x + col_w - 30
 
-            if s["cat"] == "SOCIAL" and s["requires_training"]:
-                # somente duas caixas (+1/+2) à esquerda e texto à direita
+            if s["cat"] == "SOCIAL":
+                # todas as sociais usam duas caixas (+1/+2) antes do nome
                 box_sz = 12
                 base_x = col_x + 6
                 cy = y
@@ -1218,11 +1508,14 @@ def draw_skills_panel(surface):
                 rect2 = pygame.Rect(base_x + 42, cy, box_sz, box_sz)
                 s["choice_rects"] = {"+1": rect1, "+2": rect2}
                 base_color = GRAY_50 if locked else GRAY_30
-                label_color = GRAY_70 if locked else WHITE
+                label_color_base = GRAY_70 if locked else WHITE
                 for label, rect in [("+1", rect1), ("+2", rect2)]:
                     filled = (s["bonus_choice"] == 1 and label == "+1") or (s["bonus_choice"] == 2 and label == "+2")
                     pygame.draw.rect(surface, ORANGE if filled else base_color, rect)
                     pygame.draw.rect(surface, WHITE, rect, 1)
+                    label_color = label_color_base
+                    if s["cat"] == "SOCIAL" and label == "+2" and s.get("bonus_choice") == 2:
+                        label_color = GOLD
                     lbl_y = rect.centery - FONTS["md"].get_height() // 2
                     draw_text(surface, label, FONTS["md"], label_color, (rect.right + 5, lbl_y))
                 label_w = FONTS["md"].size("+2")[0]
@@ -1265,7 +1558,12 @@ def draw_dice_panel(surface):
         draw_text(surface, "Clique em um atributo, pericia ou botao de dano para rolar dados.", FONTS["xs"], WHITE, (current_rect.x + 8, current_rect.y + 10))
     else:
         roll_type = entry.get("roll_type", "").lower()
-        type_label = {"skill": "Pericia", "attribute": "Atributo", "damage": "Dano"}.get(roll_type, roll_type.title() if roll_type else "")
+        type_label = {
+            "skill": "Pericia",
+            "attribute": "Atributo",
+            "damage": "Dano",
+            "bloqueio": "Bloqueio",
+        }.get(roll_type, roll_type.title() if roll_type else "")
         title = f"{entry['label']} ({type_label})"
         draw_text(surface, title, FONTS["sm"], WHITE, (current_rect.x + 8, current_rect.y + 8))
 
@@ -1290,7 +1588,7 @@ def draw_dice_panel(surface):
             draw_text(surface, str(val), FONTS["lg"], color, drect.center, center=True)
 
         info_bottom = dice_y + dice_size
-        if roll_type in ("attribute", "skill"):
+        if roll_type in ("attribute", "skill", "bloqueio"):
             bonus_y = dice_y + dice_size + 8
             attr_rect = pygame.Rect(dice_start_x, bonus_y, 140, 26)
             pygame.draw.rect(surface, GRAY_50, attr_rect)
@@ -1298,7 +1596,7 @@ def draw_dice_panel(surface):
             draw_text(surface, f"Atributo {entry['attr_value']:+}", FONTS["xs"], WHITE, (attr_rect.x + 6, attr_rect.y + 8))
             draw_text(surface, entry["attr_code"], FONTS["md"], WHITE, (attr_rect.right - 34, attr_rect.y + 4))
             info_bottom = attr_rect.bottom
-            if roll_type == "skill":
+            if roll_type in ("skill", "bloqueio"):
                 skill_rect = pygame.Rect(dice_start_x, attr_rect.bottom + 6, 140, 26)
                 pygame.draw.rect(surface, GRAY_50, skill_rect)
                 pygame.draw.rect(surface, WHITE, skill_rect, 1)
@@ -1358,6 +1656,21 @@ def calc_transform(window_size):
     return scale, (offset_x, offset_y)
 
 
+def toggle_fullscreen():
+    """Alterna entre janela redimensionável e tela cheia."""
+    global WINDOW
+    state = FULLSCREEN_STATE
+    if state["enabled"]:
+        WINDOW = pygame.display.set_mode(state["windowed_size"], pygame.RESIZABLE)
+        state["enabled"] = False
+    else:
+        state["windowed_size"] = WINDOW.get_size()
+        info = pygame.display.Info()
+        target_size = (info.current_w, info.current_h)
+        WINDOW = pygame.display.set_mode(target_size, pygame.FULLSCREEN)
+        state["enabled"] = True
+
+
 def calc_effort_cap(int_value):
     val = max(0, int_value)
     if val <= 2:
@@ -1368,9 +1681,9 @@ def calc_effort_cap(int_value):
 
 
 def sync_effort_with_int(int_value):
-    """Atualiza o total automaticamente se não foi editado manualmente."""
+    """Atualiza o total automaticamente se nao foi editado manualmente."""
     if not EFFORT_STATE["manual_total"]:
-        new_total = calc_effort_cap(int_value)
+        new_total = EFFORT_BASE + calc_effort_cap(int_value)
         if EFFORT_STATE["total"] != new_total:
             EFFORT_STATE["total"] = new_total
             EFFORT_STATE["buffers"]["total"] = str(new_total)
@@ -1434,6 +1747,23 @@ def apply_effort_delta(delta):
     EFFORT_STATE["buffers"]["current"] = str(EFFORT_STATE["current"])
 
 
+def spend_effort_points(amount):
+    """Consome pontos de esforço priorizando o valor atual e depois o bônus."""
+    if amount <= 0:
+        return True
+    available = max(0, EFFORT_STATE["current"] + EFFORT_STATE["bonus"])
+    if available < amount:
+        return False
+    from_current = min(EFFORT_STATE["current"], amount)
+    EFFORT_STATE["current"] -= from_current
+    remaining = amount - from_current
+    if remaining > 0:
+        EFFORT_STATE["bonus"] = max(0, EFFORT_STATE["bonus"] - remaining)
+    EFFORT_STATE["buffers"]["current"] = str(EFFORT_STATE["current"])
+    EFFORT_STATE["buffers"]["bonus"] = str(EFFORT_STATE["bonus"])
+    return True
+
+
 def main():
     global WINDOW
     initialize_loader_queue()
@@ -1443,10 +1773,10 @@ def main():
     for attr in ATTRIBUTES:
         attr["value"] = 0
     EFFORT_STATE["manual_total"] = False
-    EFFORT_STATE["current"] = 0
-    EFFORT_STATE["total"] = calc_effort_cap(0)
+    EFFORT_STATE["total"] = EFFORT_BASE + calc_effort_cap(0)
+    EFFORT_STATE["current"] = EFFORT_STATE["total"]
     EFFORT_STATE["bonus"] = 0
-    EFFORT_STATE["buffers"]["current"] = "0"
+    EFFORT_STATE["buffers"]["current"] = str(EFFORT_STATE["current"])
     EFFORT_STATE["buffers"]["total"] = str(EFFORT_STATE["total"])
     EFFORT_STATE["buffers"]["bonus"] = "0"
     EFFORT_STATE["focus"] = None
@@ -1479,7 +1809,9 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.VIDEORESIZE:
-                WINDOW = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                if not FULLSCREEN_STATE["enabled"]:
+                    FULLSCREEN_STATE["windowed_size"] = (event.w, event.h)
+                    WINDOW = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
             elif event.type == pygame.TEXTINPUT:
                 current_tab = SIDE_PANEL_STATE.get("active_tab")
                 if current_tab == "INVENTARIO" and IW is not None:
@@ -1491,6 +1823,9 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                    continue
+                if event.key == pygame.K_F11 or (event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT):
+                    toggle_fullscreen()
                     continue
                 current_tab = SIDE_PANEL_STATE.get("active_tab")
                 if current_tab == "HABILIDADES" and HW is not None:
@@ -1584,6 +1919,17 @@ def main():
                         rel_y = (pos_base[1] - embed_rect.y) * IW.HEIGHT / embed_rect.height
                         IW.handle_mouse((rel_x, rel_y), EMBED_STATE["inv_rects"], IW.INVENTARIO_STATE)
                         continue
+                    if (
+                        current_tab == "GERAL"
+                        and GW is not None
+                        and embed_rect
+                        and embed_rect.collidepoint(pos_base)
+                        and EMBED_STATE.get("geral_rects")
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * GW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * GW.HEIGHT / embed_rect.height
+                        if GW.handle_mouse((rel_x, rel_y), EMBED_STATE["geral_rects"], GW.GERAL_STATE, roll_callback=roll_skill):
+                            continue
 
                     prev_focus = EFFORT_STATE["focus"]
                     if prev_focus:
@@ -1694,6 +2040,20 @@ def main():
                         handled_wheel = AW.handle_mousewheel(event.y, rects, AW.NOTES_STATE, (rel_x, rel_y))
                 if handled_wheel:
                     continue
+                if current_tab == "GERAL" and GW is not None:
+                    embed_rect = SIDE_PANEL_STATE.get("embed_rect")
+                    rects = EMBED_STATE.get("geral_rects")
+                    if (
+                        pos_base
+                        and embed_rect
+                        and rects
+                        and embed_rect.collidepoint(pos_base)
+                    ):
+                        rel_x = (pos_base[0] - embed_rect.x) * GW.WIDTH / embed_rect.width
+                        rel_y = (pos_base[1] - embed_rect.y) * GW.HEIGHT / embed_rect.height
+                        handled = GW.handle_mousewheel(event.y, rects, GW.GERAL_STATE, (rel_x, rel_y))
+                        if handled:
+                            continue
                 if current_tab == "INVENTARIO" and IW is not None:
                     embed_rect = SIDE_PANEL_STATE.get("embed_rect")
                     rects = EMBED_STATE.get("inv_rects")
