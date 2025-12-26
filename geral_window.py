@@ -251,18 +251,15 @@ def draw_badge(surface, rect, title, value, color_bg=GRAY_20, color_border=WHITE
 def draw_geral_panel(surface, state):
     surface.fill(BLACK)
     pad = 10
+    offset_y = -74  # desloca tudo levemente para cima
     rects = {"skills": [], "skill_cols": {}, "armas_area": None}
 
-    frame_rect = pygame.Rect(pad, pad, WIDTH - pad * 2, HEIGHT - pad * 2)
+    frame_rect = pygame.Rect(pad, pad + offset_y, WIDTH - pad * 1, HEIGHT - pad * 2 - offset_y)
     pygame.draw.rect(surface, GRAY_20, frame_rect)
-    pygame.draw.rect(surface, WHITE, frame_rect, 2)
+    pygame.draw.rect(surface, WHITE, frame_rect, 1, border_radius=2)
     inner = frame_rect.inflate(-16, -16)
 
     header_rect = pygame.Rect(inner.x, inner.y, inner.width, 56)
-    pygame.draw.rect(surface, GRAY_40, header_rect)
-    pygame.draw.rect(surface, WHITE, header_rect, 1)
-    pygame.draw.line(surface, PURPLE, (header_rect.x, header_rect.bottom - 2), (header_rect.right, header_rect.bottom - 2), 3)
-    draw_text(surface, "PAINEL GERAL", FONTS["lg"], WHITE, (header_rect.x + 10, header_rect.y + 10))
 
     #attr_codes = ["AGI", "FOR", "VIG", "PRE", "INT"]
     badge_w = 64
@@ -390,7 +387,7 @@ def draw_geral_panel(surface, state):
     pygame.draw.rect(surface, WHITE, skills_header, 1)
     pygame.draw.line(surface, PURPLE, (skills_header.x, skills_header.bottom - 2), (skills_header.right, skills_header.bottom - 2), 2)
     draw_text(surface, "PERICIAS TREINADAS", FONTS["md"], WHITE, (skills_header.x + 10, skills_header.y + 6))
-    draw_text(surface, "Clique em uma pericia treinada para rolar.", FONTS["xs"], GRAY_80, (skills_header.x + 10, skills_header.bottom - 14))
+    #draw_text(surface, "Clique em uma pericia treinada para rolar.", FONTS["xs"], GRAY_80, (skills_header.x + 10, skills_header.bottom - 14))
 
     col_pad = 10
     col_gap = 8
@@ -437,7 +434,7 @@ def draw_geral_panel(surface, state):
     pygame.draw.rect(surface, GRAY_40, status_header)
     pygame.draw.rect(surface, WHITE, status_header, 1)
     pygame.draw.line(surface, PURPLE, (status_header.x, status_header.bottom - 2), (status_header.right, status_header.bottom - 2), 2)
-    draw_text(surface, "STATUS & ULTIMA ROLAGEM", FONTS["md"], WHITE, (status_header.x + 10, status_header.y + 6))
+    draw_text(surface, "STATUS", FONTS["md"], WHITE, (status_header.x + 10, status_header.y + 6))
 
     vida = state.get("status", {}).get("vida", "") or "--"
     sanidade = state.get("status", {}).get("sanidade", "") or "--"
@@ -450,19 +447,19 @@ def draw_geral_panel(surface, state):
     draw_badge(surface, san_rect, "SANIDADE", sanidade, color_bg=GRAY_20, color_border=WHITE, value_color=ORANGE)
 
     roll_rect = pygame.Rect(status_rect.x + 12, vida_rect.bottom + 10, status_rect.width - 24, status_rect.bottom - (vida_rect.bottom + 16))
-    pygame.draw.rect(surface, BLACK, roll_rect)
-    pygame.draw.rect(surface, WHITE, roll_rect, 1)
-    roll_summary = state.get("roll", {}).get("summary", "")
-    roll_lines = wrap_text(roll_summary, FONTS["xs"], roll_rect.width - 12)
-    for i, line in enumerate(roll_lines[:4]):
-        color = ORANGE if i == 0 else GRAY_80
-        draw_text(surface, line, FONTS["xs"], color, (roll_rect.x + 6, roll_rect.y + 4 + i * 16))
-    roll_detail = state.get("roll", {}).get("detail", "")
-    if roll_detail:
-        detail_lines = wrap_text(roll_detail, FONTS["xs"], roll_rect.width - 12)
-        base_y = roll_rect.y + 4 + len(roll_lines[:4]) * 16 + 2
-        for j, line in enumerate(detail_lines[:3]):
-            draw_text(surface, line, FONTS["xs"], GRAY_60, (roll_rect.x + 6, base_y + j * 16))
+    #pygame.draw.rect(surface, BLACK, roll_rect)
+    #pygame.draw.rect(surface, WHITE, roll_rect, 1)
+    #roll_summary = state.get("roll", {}).get("summary", "")
+    #roll_lines = wrap_text(roll_summary, FONTS["xs"], roll_rect.width - 12)
+    #for i, line in enumerate(roll_lines[:4]):
+    #    color = ORANGE if i == 0 else GRAY_80
+    #    draw_text(surface, line, FONTS["xs"], color, (roll_rect.x + 6, roll_rect.y + 4 + i * 16))
+    #roll_detail = state.get("roll", {}).get("detail", "")
+    #if roll_detail:
+    #    detail_lines = wrap_text(roll_detail, FONTS["xs"], roll_rect.width - 12)
+    #    base_y = roll_rect.y + 4 + len(roll_lines[:4]) * 16 + 2
+    #    for j, line in enumerate(detail_lines[:3]):
+    #        draw_text(surface, line, FONTS["xs"], GRAY_60, (roll_rect.x + 6, base_y + j * 16))
 
     return rects
 

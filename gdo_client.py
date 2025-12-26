@@ -3,6 +3,7 @@ import math
 import random
 import importlib
 import logging
+import os
 from pathlib import Path
 import pygame
 
@@ -60,6 +61,19 @@ GOLD = (240, 200, 40)
 GREEN = (0, 180, 0)
 RED = (210, 40, 40)
 
+# Rede / identificação do jogador
+NET_CLIENT = None
+PLAYER_ID = os.environ.get("GDO_PLAYER_ID") or f"player-{random.randint(1000, 9999)}"
+PLAYER_NAME = os.environ.get("GDO_PLAYER_NAME") or PLAYER_ID
+SERVER_URL = os.environ.get("GDO_SERVER_URL") or "ws://localhost:8765"
+
+#try:
+#    from gdo_core import CharacterState, InventoryItem, Skill as CoreSkill
+#except Exception:
+#    CharacterState = None
+#    InventoryItem = None
+#    CoreSkill = None
+
 # Fontes
 FONTS = {
     "xs": pygame.font.SysFont("arial", 12),
@@ -73,11 +87,11 @@ FONTS = {
 
 # Estado dos atributos (valor e retângulos dos botões serão preenchidos a cada draw)
 ATTRIBUTES = [
-    {"code": "VIG", "name": "Vigor", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "FOR", "name": "Força", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "AGI", "name": "Agilidade", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "INT", "name": "Intelecto", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "PRE", "name": "Presença", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "VIG", "name": "Vigor", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "FOR", "name": "Força", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "AGI", "name": "Agilidade", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "INT", "name": "Intelecto", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "PRE", "name": "Presença", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
 ]
 
 
@@ -86,6 +100,69 @@ def get_attribute_value(code):
         if attr.get("code") == code:
             return attr.get("value", 0)
     return 0
+
+
+
+
+def apply_patch_from_host(patch):
+    """Aplica patch recebido do host sobre o estado local."""
+    if not isinstance(patch, dict):
+        return
+    if "attributes" in patch:
+        attrs = patch["attributes"]
+        for attr in ATTRIBUTES:
+            code = attr.get("code")
+            if code in attrs:
+                attr["value"] = max(-6, min(6, int(attrs[code])))
+    if "effort" in patch:
+        eff = patch["effort"]
+        EFFORT_STATE["current"] = eff.get("current", EFFORT_STATE["current"])
+        EFFORT_STATE["total"] = eff.get("total", EFFORT_STATE["total"])
+        EFFORT_STATE["bonus"] = eff.get("bonus", EFFORT_STATE["bonus"])
+        EFFORT_STATE["buffers"]["current"] = str(EFFORT_STATE["current"])
+        EFFORT_STATE["buffers"]["total"] = str(EFFORT_STATE["total"])
+        EFFORT_STATE["buffers"]["bonus"] = str(EFFORT_STATE["bonus"])
+    if "life_tracks" in patch:
+        for key, marks in patch["life_tracks"].items():
+            LIFE_MARKS[key] = list(marks)
+    if "sanity_tracks" in patch:
+        san_key_map = {"ESTAVEL": "ESTÁVEL", "INSTAVEL": "INSTÁVEL"}
+        for key, marks in patch["sanity_tracks"].items():
+            target = san_key_map.get(key, key)
+            SAN_MARKS[target] = list(marks)
+
+
+def handle_grant_item(item):
+    if IW is None:
+        return
+    try:
+        IW.INVENTARIO_STATE.setdefault("items", []).append(item)
+        IW.ensure_filtered(IW.INVENTARIO_STATE)
+    except Exception:
+        pass
+
+
+def handle_grant_skill(skill):
+    if skill is None:
+        return
+    skill_name = skill.get("name") if isinstance(skill, dict) else str(skill)
+    # adiciona skill simples na lista para aparecer na UI
+    SKILLS.append(
+        {
+            "name": skill_name,
+            "attr": "INT",
+            "cat": "INTELECTO",
+            "requires_training": False,
+            "bonus": 1,
+            "bonus_choice": 1,
+            "trained": True,
+            "rect": None,
+            "choice_rects": None,
+        }
+    )
+
+
+
 
 # Vida: trilhas de tolerância interativas
 LIFE_TRACKS = ["LEVE", "FERIDO", "MACHUCADO", "MORRENDO"]
@@ -173,6 +250,10 @@ for _skill in SKILLS:
     _skill["trained"] = False
     _skill["bonus_choice"] = None
 
+NET_CLIENT = None
+PLAYER_ID = os.environ.get("GDO_PLAYER_ID") or f"player-{random.randint(1000, 9999)}"
+PLAYER_NAME = os.environ.get("GDO_PLAYER_NAME") or PLAYER_ID
+SERVER_URL = os.environ.get("GDO_SERVER_URL") or "ws://localhost:8765"
 
 DICE_STATE = {
     "current": None,
@@ -467,6 +548,11 @@ def record_roll(entry):
         DICE_STATE["history"].insert(0, DICE_STATE["current"])
         DICE_STATE["history"] = DICE_STATE["history"][:4]
     DICE_STATE["current"] = entry
+    if NET_CLIENT is not None:
+        try:
+            NET_CLIENT.send_roll_result(entry)
+        except Exception:
+            pass
 
 
 def roll_attribute(attr):
@@ -963,15 +1049,15 @@ def life_status():
     Retorna (texto, cor, nível) para o status da carta VIDA.
     Escala:
       - Saudável (verde) se nada completo
-      - Ferido (laranja) quando LEVE completo
-      - Machucado (vermelho) quando FERIDO completo
+      - Médio (laranja) quando LEVE completo
+      - Grave (vermelho) quando FERIDO completo
       - Morrendo (preto) quando MACHUCADO completo
     Em Morrendo, a cor da caixa varia conforme os círculos de sucesso/falha:
       Sucessos: 1 verde escuro, 2 verde médio, 3 verde vivo
       Falhas: 1 vermelho escuro, 2 vermelho médio, 3 vermelho vivo
       Empate/sem marcas: preto
     """
-    steps = [("SAUDÁVEL", (0, 180, 0)), ("FERIDO", ORANGE), ("MACHUCADO", RED), ("MORRENDO", BLACK)]
+    steps = [("SAUDÁVEL", (0, 180, 0)), ("MÉDIO", ORANGE), ("GRAVE", RED), ("MORRENDO", BLACK)]
     level = 0
     if LIFE_MARKS["LEVE"] and all(LIFE_MARKS["LEVE"]):
         level = 1
@@ -1072,13 +1158,13 @@ def draw_death_saves(surface, card_rect, y_start=None):
     """Desenha resistência à morte centralizada dentro do card; y_start opcional para evitar sobreposição."""
     global DEATH_RECTS
     DEATH_RECTS.clear()
-    radius = 8
-    spacing = 18
-    block_gap = 70
+    radius = 9
+    spacing = 20
+    block_gap = 76
     block_width = (radius * 2 + spacing * 2)  # largura aproximada de 3 círculos
     total_width = block_width * 2 + block_gap
     x = card_rect.x + (card_rect.width - total_width) // 2
-    default_y = card_rect.bottom - 56
+    default_y = card_rect.bottom - 44
     y = default_y if y_start is None else max(card_rect.y + 10, min(y_start, default_y))
 
     draw_text(surface, "RESISTÊNCIA À MORTE", FONTS["xs"], WHITE, (card_rect.centerx, y), center=True)
@@ -1110,13 +1196,13 @@ def draw_sanity_saves(surface, card_rect, y_start=None):
     """Resistência à loucura, espelhando a de morte; y_start opcional para evitar sobreposição."""
     global SAN_SAVE_RECTS
     SAN_SAVE_RECTS.clear()
-    radius = 8
-    spacing = 18
-    block_gap = 70
+    radius = 9
+    spacing = 20
+    block_gap = 76
     block_width = (radius * 2 + spacing * 2)
     total_width = block_width * 2 + block_gap
     x = card_rect.x + (card_rect.width - total_width) // 2
-    default_y = card_rect.bottom - 56
+    default_y = card_rect.bottom - 44
     y = default_y if y_start is None else max(card_rect.y + 10, min(y_start, default_y))
 
     draw_text(surface, "RESISTÊNCIA À LOUCURA", FONTS["xs"], WHITE, (card_rect.centerx, y), center=True)
@@ -1145,15 +1231,15 @@ def draw_vitals_panel(surface):
     base_x = 206
     base_y = 14
     card_w = 210
-    card_h = 240
+    card_h = 320
 
     # Painel VIDA com trilhas dinâmicas
-    life_rect = pygame.Rect(base_x + 65, base_y, card_w, card_h)
+    life_rect = pygame.Rect(base_x + card_w - 210, base_y, card_w + 20, card_h)
     pygame.draw.rect(surface, BLACK, life_rect)
     pygame.draw.rect(surface, WHITE, life_rect, 2)
     draw_text(surface, "VIDA", FONTS["md"], WHITE, (life_rect.x + 10, life_rect.y + 8))
     status_text, status_color, status_level = life_status()
-    status_rect = pygame.Rect(life_rect.x + 10, life_rect.y + 32, 110, 24)
+    status_rect = pygame.Rect(life_rect.x + 10, life_rect.y + 32, 130, 28)
     pygame.draw.rect(surface, status_color, status_rect)
     draw_text(surface, status_text, FONTS["xs"], BLACK if status_color != BLACK else WHITE, status_rect.center, center=True)
 
@@ -1163,16 +1249,18 @@ def draw_vitals_panel(surface):
     sync_life_marks(counts)
     LIFE_RECTS.clear()
     start_y = life_rect.y + 74
-    row_gap = 4
-    box_size = 12
-    box_step = box_size + 4
+    row_gap = 8
+    box_size = 18
+    box_step = 20
     label_x = life_rect.x + 14
     max_boxes = max(counts.values()) if counts else 1
     max_width = box_size + (max_boxes - 1) * box_step
     box_x = life_rect.right - 12 - max_width
     current_y = start_y
+    label_map = {"LEVE": "LEVE", "FERIDO": "MÉDIO", "MACHUCADO": "GRAVE", "MORRENDO": "MORRENDO"}
     for key in LIFE_TRACKS:
-        label_rect = draw_text(surface, key.title(), FONTS["xs"], WHITE, (label_x, current_y))
+        label = label_map.get(key, key).title()
+        label_rect = draw_text(surface, label, FONTS["xs"], WHITE, (label_x, current_y))
         y_boxes = current_y
         row_height = max(box_size, label_rect.height)
         if label_rect.right + 6 > box_x:
@@ -1180,7 +1268,7 @@ def draw_vitals_panel(surface):
             row_height = label_rect.height + 2 + box_size
         marks = LIFE_MARKS[key]
         for j in range(counts[key]):
-            brect = pygame.Rect(box_x + j * (box_size + 4), y_boxes, box_size, box_size)
+            brect = pygame.Rect(box_x + j * box_step, y_boxes, box_size, box_size)
             pygame.draw.rect(surface, RED, brect)
             pygame.draw.rect(surface, WHITE, brect, 1)
             if marks[j]:
@@ -1196,12 +1284,12 @@ def draw_vitals_panel(surface):
         draw_death_saves(surface, life_rect, y_start=death_y)
 
     # Painel SANIDADE (agora dinâmico)
-    san_rect = pygame.Rect(base_x + card_w + 70, base_y, card_w, card_h)
+    san_rect = pygame.Rect(base_x + card_w + 60, base_y, card_w + 15, card_h)
     pygame.draw.rect(surface, BLACK, san_rect)
     pygame.draw.rect(surface, WHITE, san_rect, 2)
     draw_text(surface, "SANIDADE", FONTS["md"], WHITE, (san_rect.x + 10, san_rect.y + 8))
     san_status_text, san_status_color, san_level = sanity_status()
-    san_status_rect = pygame.Rect(san_rect.x + 10, san_rect.y + 32, 110, 24)
+    san_status_rect = pygame.Rect(san_rect.x + 10, san_rect.y + 32, 130, 28)
     pygame.draw.rect(surface, san_status_color, san_status_rect)
     draw_text(surface, san_status_text, FONTS["xs"], BLACK if san_status_color != BLACK else WHITE, san_status_rect.center, center=True)
 
@@ -1211,9 +1299,9 @@ def draw_vitals_panel(surface):
     sync_san_marks(san_counts)
     SAN_RECTS.clear()
     s_start_y = san_rect.y + 74
-    s_row_gap = 4
-    s_box_size = 12
-    s_box_step = s_box_size + 4
+    s_row_gap = 8
+    s_box_size = 18
+    s_box_step = 20
     s_label_x = san_rect.x + 14
     s_max_boxes = max(san_counts.values()) if san_counts else 1
     s_max_width = s_box_size + (s_max_boxes - 1) * s_box_step
@@ -1244,32 +1332,34 @@ def draw_vitals_panel(surface):
         draw_sanity_saves(surface, san_rect, y_start=sanity_y)
 
     # Esforço
-    effort_rect = pygame.Rect(base_x + 58, base_y + card_h + 12, card_w * 2 + 10, 160)
+    effort_rect = pygame.Rect(base_x + 14, base_y + card_h + 10, card_w + 260, 190)
     pygame.draw.rect(surface, BLACK, effort_rect)
     pygame.draw.rect(surface, WHITE, effort_rect, 2)
-    draw_text(surface, "ESFORÇO", FONTS["sm_b"], WHITE, (effort_rect.x + 10, effort_rect.y + 8))
+    draw_text(surface, "ESFORÇO", FONTS["md"], WHITE, (effort_rect.x + 18, effort_rect.y + 10))
 
     int_value = get_attr_value("INT")
     sync_effort_with_int(int_value)
 
-    label_y = effort_rect.y + 24
-    current_rect = pygame.Rect(effort_rect.x + 140, label_y - 2, 70, 22)
-    total_rect = pygame.Rect(effort_rect.x + 260, label_y - 2, 70, 22)
-    bonus_rect = pygame.Rect(effort_rect.x + 360, label_y - 2, 60, 22)
+    label_y = effort_rect.y + 38
+    input_h = 28
+    current_rect = pygame.Rect(effort_rect.x + 75, label_y - 4, 88, input_h)
+    total_rect = pygame.Rect(effort_rect.x + 220, label_y - 4, 88, input_h)
+    bonus_rect = pygame.Rect(effort_rect.x + 370, label_y - 4, 76, input_h)
     EFFORT_STATE["input_rects"] = {"current": current_rect, "total": total_rect, "bonus": bonus_rect}
 
-    draw_text(surface, "Atual", FONTS["sm"], WHITE, (effort_rect.x + 110, label_y))
-    draw_text(surface, "Total", FONTS["sm"], WHITE, (effort_rect.x + 232, label_y))
-    draw_text(surface, "Bônus", FONTS["sm"], WHITE, (effort_rect.x + 332, label_y))
+    label_font = FONTS["sm_b"]
+    draw_text(surface, "Atual", label_font, WHITE, (current_rect.x - 52, label_y))
+    draw_text(surface, "Total", label_font, WHITE, (total_rect.x - 52, label_y))
+    draw_text(surface, "Bônus", label_font, WHITE, (bonus_rect.x - 56, label_y))
     for field, rect in [("current", current_rect), ("total", total_rect), ("bonus", bonus_rect)]:
         pygame.draw.rect(surface, BLACK, rect)
         pygame.draw.rect(surface, ORANGE if EFFORT_STATE["focus"] == field else WHITE, rect, 1)
         buffer_text = EFFORT_STATE["buffers"][field]
-        draw_text(surface, buffer_text, FONTS["md"], WHITE, rect.inflate(-6, -2).topleft)
+        draw_text(surface, buffer_text, FONTS["md+"], WHITE, rect.inflate(-8, -4).topleft)
 
     # Indicador circular de esforço (lado esquerdo, maior)
-    circle_center = (effort_rect.x + 60, effort_rect.y + 96)
-    radius = 32
+    circle_center = (effort_rect.right - 75, effort_rect.y + 125)
+    radius = 40
     pygame.draw.circle(surface, GRAY_30, circle_center, radius)
     pygame.draw.circle(surface, WHITE, circle_center, radius, 1)
     effective_current = EFFORT_STATE["current"] + EFFORT_STATE["bonus"]
@@ -1283,23 +1373,27 @@ def draw_vitals_panel(surface):
             (circle_center[0] - radius, circle_center[1] - radius, radius * 2, radius * 2),
             start_ang,
             end_ang,
-            6,
+            7,
         )
     display_text = f"{effective_current}/{EFFORT_STATE['total']}"
-    draw_text(surface, display_text, FONTS["sm_b"], WHITE, circle_center, center=True)
+    draw_text(surface, display_text, FONTS["md"], WHITE, circle_center, center=True)
 
     offsets = [-5, -2, -1, 1, 2, 5]
-    btn_w, btn_h = 48, 18
+    btn_w, btn_h = 60, 25
+    base_btn_x = effort_rect.x + 80
+    base_btn_y = effort_rect.y + 98
+    col_step = btn_w + 14
+    row_step = btn_h + 12
     EFFORT_STATE["btn_rects"].clear()
     for i, val in enumerate(offsets):
         row = i // 3
         col = i % 3
-        bx = effort_rect.x + 140 + col * (btn_w + 12)
-        by = effort_rect.y + 60 + row * (btn_h + 10)
+        bx = base_btn_x + col * col_step
+        by = base_btn_y + row * row_step
         brect = pygame.Rect(bx, by, btn_w, btn_h)
         pygame.draw.rect(surface, GRAY_30, brect)
         pygame.draw.rect(surface, GRAY_70, brect, 1)
-        draw_text(surface, f"{val:+}", FONTS["sm"], WHITE, brect.center, center=True)
+        draw_text(surface, f"{val:+}", FONTS["sm_b"], WHITE, brect.center, center=True)
         EFFORT_STATE["btn_rects"].append((brect, val))
 
 
@@ -1476,7 +1570,6 @@ def draw_skills_panel(surface):
     col_w = panel_w // 3
     start_y = panel_y + 30
     row_h = 24
-    checkbox_size = 12
 
     for idx, (cat_key, cat_label) in enumerate(categories):
         col_x = panel_x + idx * col_w
@@ -1491,7 +1584,7 @@ def draw_skills_panel(surface):
             locked = s["requires_training"] and not s["trained"]
             is_hover = UI_STATE.get("hover_skill") == s["name"]
             text_color = PURPLE if (is_hover and not locked) else (GREEN if s["trained"] else (GRAY_50 if locked else WHITE))
-            if s["cat"] == "SOCIAL" and s.get("bonus_choice") == 2:
+            if s.get("bonus_choice") == 2:
                 text_color = GOLD
             s["choice_rects"] = None
             s["rect"] = None
@@ -1499,35 +1592,24 @@ def draw_skills_panel(surface):
             name_text = s["name"]
             attr_x = col_x + col_w - 30
 
-            if s["cat"] == "SOCIAL":
-                # todas as sociais usam duas caixas (+1/+2) antes do nome
-                box_sz = 12
-                base_x = col_x + 6
-                cy = y
-                rect1 = pygame.Rect(base_x, cy, box_sz, box_sz)
-                rect2 = pygame.Rect(base_x + 42, cy, box_sz, box_sz)
-                s["choice_rects"] = {"+1": rect1, "+2": rect2}
-                base_color = GRAY_50 if locked else GRAY_30
-                label_color_base = GRAY_70 if locked else WHITE
-                for label, rect in [("+1", rect1), ("+2", rect2)]:
-                    filled = (s["bonus_choice"] == 1 and label == "+1") or (s["bonus_choice"] == 2 and label == "+2")
-                    pygame.draw.rect(surface, ORANGE if filled else base_color, rect)
-                    pygame.draw.rect(surface, WHITE, rect, 1)
-                    label_color = label_color_base
-                    if s["cat"] == "SOCIAL" and label == "+2" and s.get("bonus_choice") == 2:
-                        label_color = GOLD
-                    lbl_y = rect.centery - FONTS["md"].get_height() // 2
-                    draw_text(surface, label, FONTS["md"], label_color, (rect.right + 5, lbl_y))
-                label_w = FONTS["md"].size("+2")[0]
-                name_x = rect2.right + 10 + label_w
-            else:
-                # caixa única normal alinhada à esquerda
-                box_rect = pygame.Rect(col_x + 6, y, checkbox_size, checkbox_size)
-                s["rect"] = box_rect
-                box_color = GREEN if s["trained"] else (GRAY_50 if locked else GRAY_30)
-                pygame.draw.rect(surface, box_color, box_rect)
-                pygame.draw.rect(surface, WHITE, box_rect, 1)
-                name_x = box_rect.right + 4
+            # todas as perícias usam duas caixas (+1/+2) antes do nome
+            box_sz = 12
+            base_x = col_x + 6
+            cy = y
+            rect1 = pygame.Rect(base_x, cy, box_sz, box_sz)
+            rect2 = pygame.Rect(base_x + 42, cy, box_sz, box_sz)
+            s["choice_rects"] = {"+1": rect1, "+2": rect2}
+            base_color = GRAY_50 if locked else GRAY_30
+            label_color_base = GRAY_70 if locked else WHITE
+            for label, rect in [("+1", rect1), ("+2", rect2)]:
+                filled = (s["bonus_choice"] == 1 and label == "+1") or (s["bonus_choice"] == 2 and label == "+2")
+                pygame.draw.rect(surface, ORANGE if filled else base_color, rect)
+                pygame.draw.rect(surface, WHITE, rect, 1)
+                label_color = GOLD if (label == "+2" and s.get("bonus_choice") == 2) else label_color_base
+                lbl_y = rect.centery - FONTS["md"].get_height() // 2
+                draw_text(surface, label, FONTS["md"], label_color, (rect.right + 5, lbl_y))
+            label_w = FONTS["md"].size("+2")[0]
+            name_x = rect2.right + 10 + label_w
 
             s["name_rect"] = draw_text(surface, name_text, FONTS["md"], text_color, (name_x, y - 2))
             draw_text(surface, s["attr"], FONTS["sm"], text_color, (attr_x, y - 2))
@@ -1771,9 +1853,9 @@ def main():
 
     # Estado simples dos atributos
     for attr in ATTRIBUTES:
-        attr["value"] = 0
+        attr["value"] = 1
     EFFORT_STATE["manual_total"] = False
-    EFFORT_STATE["total"] = EFFORT_BASE + calc_effort_cap(0)
+    EFFORT_STATE["total"] = EFFORT_BASE + calc_effort_cap(get_attr_value("INT"))
     EFFORT_STATE["current"] = EFFORT_STATE["total"]
     EFFORT_STATE["bonus"] = 0
     EFFORT_STATE["buffers"]["current"] = str(EFFORT_STATE["current"])
@@ -1782,6 +1864,7 @@ def main():
     EFFORT_STATE["focus"] = None
     sync_habilidades_training_to_skills()
     sync_attrs_to_habilidades()
+    
 
     running = True
     while running:
