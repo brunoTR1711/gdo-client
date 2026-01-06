@@ -1,0 +1,264 @@
+Guia de Funcoes - GDO Client
+============================
+
+Primeiro uso (operacao rapida)
+- Requisitos: Python 3.x + pygame instalados. Variaveis opcionais: GDO_PLAYER_ID, GDO_PLAYER_NAME, GDO_SERVER_URL.
+- Execucao local: `python gdo_client.py`. A janela abre com os quatro paineis (Geral, Inventario, Habilidades, Anotacoes) e a area principal de atributos/rolagens.
+- Navegacao: guias laterais trocam os paineis; F11 ou Alt+Enter alternam tela cheia; ESC encerra.
+- Interacao basica: clique em atributos ou pericias para rolar; marque caixas de vida/sanidade; edite esforco; abra modais para itens/skills/notas pelos botoes dos paineis.
+
+
+Mapa de funcoes por modulo
+==========================
+
+gdo_client.py (aplicacao principal e canvas unico)
+--------------------------------------------------
+Sincronizacao e estado compartilhado
+- get_attribute_value(code): devolve o valor atual do atributo pelo codigo (VIG/FOR/AGI/INT/PRE).
+- normalize_skill_name(name): limpa o nome da pericia (minusculo, sem asterisco) para comparacoes.
+- find_skill_by_name(name): retorna o dict da pericia correspondente em SKILLS.
+- sync_skill_training_to_habilidades(skill_name, trained): reflete mudancas de treino de pericia de defesa para HABILIDADES_STATE.
+- sync_habilidades_training_to_skills(): aplica no painel principal os treinos marcados no painel de habilidades.
+- sync_attrs_to_habilidades(): copia valores atuais de atributos para o painel de habilidades recalcular formulas.
+- apply_patch_from_host(patch): aplica patch vindo do host (atributos, esforco, trilhas de vida/sanidade) nos estados locais.
+- handle_grant_item(item): insere item recebido no inventario e reexecuta o filtro.
+- handle_grant_skill(skill): adiciona pericia simples recebida, ja marcada como treinada.
+- send_note_payload(): monta payload basico das anotacoes rapidas da tela principal.
+
+Edicao de nota embutida
+- note_move_cursor(field, direction): move o cursor em titulo/assunto/corpo (inclui navegacao de linha no corpo).
+- note_insert_text(field, text): insere texto na posicao do cursor e avanca o cursor.
+- note_backspace(field): remove caractere anterior ao cursor.
+- note_delete(field): remove caractere na posicao atual do cursor.
+
+Carregamento dinamico de paineis
+- show_loading_screen(message, progress): desenha tela de carregamento com barra de progresso.
+- initialize_loader_queue(): prepara fila de modulos externos (habilidades, anotacoes, inventario, geral) para import incremental.
+- load_next_module_step(): importa o proximo modulo da fila, atualizando barra e mensagens ou registrando erro.
+- finalize_panels_if_ready(): cria superficies dos paineis importados e marca que o carregamento terminou.
+
+Utilitarios graficos e de coordenada
+- draw_text(surface, text, font, color, pos, center=False): renderiza texto e devolve o rect usado.
+- log_event(message): registra evento no log sem quebrar se houver falha.
+- window_to_canvas(pos, scale, offset): converte coordenadas da janela real para a base 1920x1080.
+- wrap_text(text, font, max_width): quebra texto em linhas e retorna indices iniciais para caret.
+- draw_pips(surface, x, y, count, size=10, danger_index=None): desenha marcadores quadrados (pode colorir ultimos como alerta).
+
+Rolagem de dados (atributos, pericias e dano especial)
+- roll_custom_dice(count, sides): sorteia lista de dados generica.
+- roll_3d6(): atalho para 3d6.
+- build_roll_entry(label, attr_code, attr_value, skill_bonus, roll_type, skill_name=None, trained=False): monta estrutura padrao de rolagem.
+- record_roll(entry): move rolagem atual para historico e publica para o cliente de rede se existir.
+- roll_attribute(attr): cria rolagem para um atributo clicado.
+- roll_skill(skill): dispara rolagem de pericia (ou delega para roll_bloqueio), respeitando requisito de treino.
+- roll_summary(entry): gera resumo textual amigavel da ultima rolagem (inclui detalhes de bloqueio quando aplicado).
+- start_roll(entry): inicia animacao dos dados e agenda finalizacao.
+- update_dice_roll(): avanca animacao e conclui rolagem apos 1s gravando o resultado.
+- get_last_damage_entry(): busca a rolagem de dano mais recente para usar como referencia no bloqueio.
+
+Logica de bloqueio (pericia especial)
+- current_bloqueio_trained(): verifica se a pericia Bloqueio esta marcada como treinada.
+- current_armor_block_bonus(): calcula bonus de armadura aplicavel ao bloqueio combinando dados de habilidades e inventario.
+- build_personagem_snapshot_for_bloqueio(): captura forca, esforco, estado de vida e bonus/reducao de armadura para a simulacao.
+- calcular_bloqueio(personagem, severidade_dano, dados=None): aplica regra completa de bloqueio (validacoes, rolagem, ajustes de severidade e mensagens).
+- build_bloqueio_roll_entry(block_result, personagem): formata resultado do bloqueio como entrada de rolagem para UI/historico.
+- roll_bloqueio(skill, severidade_dano=None): executa fluxo de bloqueio (usa dano recente se nao informado, debita PE, registra mensagens).
+
+Vida, sanidade e esforco
+- calc_life_counts(vigor_value): calcula caixas por trilha de vida a partir de VIG.
+- sync_life_marks(counts): ajusta LIFE_MARKS para caber no numero de caixas calculado.
+- calc_san_counts(pres_value): calcula caixas de sanidade a partir de PRE.
+- sync_san_marks(counts): ajusta SAN_MARKS conforme contagem.
+- life_status(): devolve texto/cor/nivel da carta de vida considerando trilhas e saves de morte.
+- sanity_status(): devolve texto/cor/nivel da carta de sanidade considerando trilhas e saves de loucura.
+- calc_effort_cap(int_value): define limite de PE baseado em INT (regras de escala).
+- sync_effort_with_int(int_value): atualiza total/bonus de esforco quando INT muda, exceto se usuario editou manualmente.
+- apply_effort_buffer(field): converte buffer de texto para numero e aplica (current/total/bonus), marcando edicao manual quando necessario.
+- apply_effort_delta(delta): aplica botoes rapidos de +/- no bonus e no esforco atual.
+- spend_effort_points(amount): consome PE priorizando valor atual depois bonus; retorna sucesso/fracasso.
+
+Parsing e auxiliares diversos
+- get_attr_value(code): obtencao simples de atributo (duplicata leve para chamadas internas).
+- parse_damage_die(text): interpreta string de dado de dano (ex.: "2d6") e devolve (quantidade, faces).
+- safe_int(val, default=0): conversao robusta para inteiro.
+
+Desenho dos paineis e HUD principal
+- draw_attribute_column(surface): desenha coluna de atributos com botoes +/- e registra rects de hit.
+- draw_death_saves(surface, card_rect, y_start=None): desenha saves de morte e salva rects clicaveis.
+- draw_sanity_saves(surface, card_rect, y_start=None): desenha saves de loucura.
+- draw_vitals_panel(surface): monta cartas de VIDA e SANIDADE com trilhas dinamicas e indicador de esforco.
+- draw_notes_panel(surface): formulario rapido de anotacoes na tela principal (nao confundir com painel dedicado).
+- draw_inventory_panel(surface): renderiza painel lateral com tabs e embute superficies dos modulos carregados.
+- draw_skills_panel(surface): lista pericias principais com caixas de treino/bonus e click para rolar.
+- draw_dice_panel(surface): mostra rolagem atual, historico e animacoes.
+
+Layout, escala e janelas
+- calc_transform(window_size): calcula escala e deslocamento para manter proporcao 16:9 no resize.
+- toggle_fullscreen(): alterna entre janela redimensionavel e fullscreen guardando o tamanho anterior.
+
+Loop principal
+- main(): inicializa estados, roda loop de eventos/desenho, distribui eventos para paineis, controla loading, renderiza canvas e finaliza pygame.
+
+
+inventario_window.py (painel de inventario)
+-------------------------------------------
+Normalizacao e opcoes de formulario
+- _normalize_text(txt): remove acentos/caracteres especiais para facilitar comparacao.
+- normalize_category_key(category): normaliza nome de categoria para chaves internas (arma, municao, protecao, etc.).
+- get_allowed_option_fields(category): define quais campos opcionais estao ativos por categoria.
+- get_category_options(category, field): retorna lista de opcoes validas para um campo respeitando a categoria.
+- get_form_options(form, field): wrapper que pega categoria do formulario e chama get_category_options.
+- normalize_form_for_category(form): limpa campos invalidos para a categoria atual e ajusta valores default.
+
+Construcao e gerenciamento de itens
+- clone_default_items(): copia lista base de itens (inicia vazia no projeto).
+- make_blank_item(state): gera item basico respeitando filtro atual para adicao rapida.
+- add_new_item(state): adiciona item em branco e seleciona-o; atualiza filtros e status.
+- open_add_modal(state): prepara modal de adicao com campos default/foco/cursor.
+- close_modal(state): fecha modal corrente.
+- build_item_from_form(state, form): converte formulario (com normalizacao) em dict de item completo.
+- confirm_add_modal(state): confirma modal (adiciona ou edita conforme modo) e atualiza selecao/status.
+
+Auxiliares de texto e layout
+- wrap_text(text, font, max_width): quebra texto em linhas; quebra palavras longas se preciso.
+- wrap_text_clamped(text, font, max_width, max_height): quebra texto respeitando altura maxima (trunca com ...).
+- wrap_text_with_starts(text, font, max_width): quebra texto e informa indice inicial de cada linha (para caret).
+- clean_option(value): remove marcador '---' retornando string vazia quando for placeholder.
+- ellipsize(text, font, max_width): trunca texto adicionando reticencias para caber na largura.
+
+Imagens e IO
+- load_scaled_image(path, target_size): carrega imagem do disco e redimensiona preservando proporcao.
+- choose_image_file(): abre dialogo de arquivo (tkinter) para selecionar imagem e devolver caminho.
+
+Numericos e filtros
+- safe_int(value, default=0): conversao segura para inteiro.
+- get_total_weight(state): soma peso (space) de todos itens.
+- get_weight_limit(state): calcula limite de peso baseado em FOR e bonus.
+- get_best_protection(state): devolve maior valor de protecao presente nos itens.
+- ensure_filtered(state): atualiza cache filtrado por nome/categoria.
+- match_category_name(value): devolve nome oficial da categoria (caso exista).
+- get_category_counts(state): conta itens por categoria.
+- clamp_scroll(state, max_rows): limita scroll da lista conforme numero de linhas visiveis.
+- get_selected_item(state): retorna item selecionado respeitando filtro; ajusta selecao se necessario.
+- set_status(state, message, color=None): atualiza mensagem de status e cor.
+- select_next(state, delta): move selecao para proximo/anterior item filtrado.
+
+Desenho do painel e modais
+- draw_inventory_panel(surface, state): orquestra renderizacao completa (limites, detalhe, lista, modais) e retorna rects de hit.
+- draw_text(surface, text, font, color, pos, center=False): helper grafico local.
+- draw_limits_section(surface, rect, state): exibe peso total/limite e contadores por categoria.
+- draw_form_box(surface, rect, label, text, scroll_offset=0, return_max=False): desenha bloco de texto com scroll opcional.
+- draw_left_detail(surface, detail_rect, state, rects): mostra detalhes do item selecionado (imagem, campos, botoes).
+- draw_filter_row(surface, start_rect, state): desenha botoes de categoria e retorna rects e altura final.
+- draw_modal(surface, state): renderiza modal de adicionar/editar item com campos e dropdowns.
+- draw_right_panel(surface, rect, state, rects): area de filtros, busca, lista e botoes de acao.
+- draw_item_list(surface, list_rect, state): lista itens filtrados com destaques e retorna rects por linha.
+
+Manipulacao de eventos
+- handle_mouse(pos, rects, state): trata cliques (modais, filtros, botoes, selecao de item, upload de imagem).
+- handle_mousewheel(delta, rects, state, pos=None): scroll em modais, campos de texto ou lista de itens.
+- handle_text_input(event, state): insere texto em campos de modal ou busca.
+- handle_key(event, state): atalhos de teclado para navegar/editar (inclui PageUp/PageDown, setas, confirmacao de modal).
+
+Estado e demo
+- make_default_state(): constroi estado inicial completo do painel.
+- main(): abre janela de demo isolada do inventario (loop de eventos proprio).
+
+
+habilidades_window.py (painel de habilidades)
+---------------------------------------------
+Helpers de texto e defesa
+- wrap_text(text, font, max_width): quebra texto simples.
+- wrap_text_with_starts(text, font, max_width): quebra texto mantendo indices para caret.
+- compute_base_defense(state): calcula defesa base (10 + VIG do painel).
+- compute_defense_value(state, key, attr_key): calcula valor e partes de cada defesa (Esquiva/Bloqueio/Contra) considerando treino e armadura.
+
+Primitivas de UI
+- draw_text(surface, text, font, color, pos, center=False): renderizador basico.
+- draw_tabs(surface, state): desenha abas superiores genericas (usadas apenas na demo).
+- draw_pentagon(surface, center, radius): poligono central da carta de defesa base.
+- draw_checkbox(surface, rect, checked): checkbox simples.
+- draw_diamond(surface, center, size, text, border_color=WHITE, fill_color=BLACK): losango para mostrar bonus/valores.
+- draw_button(surface, rect, label, color_bg, color_border=WHITE, font="xs"): botao padrao.
+
+Gerencia de lista/formulario
+- filtered_abilities(state): filtra habilidades por categoria ativa.
+- snapshot_form(state): cria dict do formulario atual sem espacos extras.
+- clear_form(state): limpa formulario/selecoes e cursores.
+- add_or_update(state, mode): valida e adiciona ou atualiza habilidade conforme modo/selecao.
+- remove_selected(state): remove habilidade selecionada e limpa estado.
+
+Renderizacao principal
+- draw_habilidades_panel(surface, state): desenha painel inteiro (defesas, proficiencias, filtros, formulario, lista) e retorna rects de hit.
+
+Eventos
+- handle_mouse(pos, rects, state): trata cliques em dropdowns, filtros, defesas, campos, botoes e linhas da lista.
+- handle_key(event, state): edita campos de texto conforme foco (setas, backspace, enter para quebra de linha).
+
+Demo
+- main(): executa painel de habilidades em janela propria para teste isolado.
+
+
+geral_window.py (painel resumo geral)
+-------------------------------------
+Helpers e normalizacao
+- wrap_text(text, font, max_width): quebra texto simples.
+- safe_int(value, default=0): conversao segura.
+- roll_custom_dice(count, sides): rolagem generica.
+- normalize_category_key(category): normaliza nome de categoria de item.
+- get_total_weight(items): soma pesos de itens.
+- get_weight_limit(strength, bonus): calcula limite de carga pela FOR e bonus.
+- get_best_protection(items): maior protecao presente.
+- filter_armas(items): extrai armas do inventario com campos essenciais.
+
+Defesas e estado
+- compute_base_defense(attrs): 10 + VIG informado.
+- compute_defense_snapshot(attrs, hab_state=None): monta resumo de defesas (esquiva/bloqueio/contra), resistencia e proficiencia a partir de attrs + painel de habilidades.
+- make_default_state(): constroi estado inicial do painel geral.
+- update_from_sources(attrs=None, hab_state=None, inv_state=None, skills=None, vida=None, sanidade=None): sincroniza o painel geral com dados vindos de outros paineis (atributos, inventario, habilidades, pericias treinadas e status).
+
+UI
+- draw_text(surface, text, font, color, pos, center=False): helper grafico.
+- draw_badge(surface, rect, title, value, color_bg=GRAY_20, color_border=WHITE, value_color=WHITE): selo usado nos cards.
+- draw_geral_panel(surface, state): renderiza painel geral (inventario rapido, defesas, skills treinadas, status) e devolve rects.
+
+Eventos e demo
+- roll_skill_local(skill, state): executa rolagem local de pericia treinada quando nao ha callback externo.
+- handle_mouse(pos, rects, state, roll_callback=None): dispara rolagem via callback ou local ao clicar em pericia treinada.
+- handle_mousewheel(delta, rects, state, pos=None): scroll de listas de armas e colunas de skills.
+- handle_key(event, state): placeholder (retorna False).
+- main(): roda demo isolada do painel geral.
+
+
+anotacoes_window.py (painel de anotacoes)
+-----------------------------------------
+Helpers e UI base
+- wrap_text_with_starts(text, font, max_width): quebra texto com indices de inicio (usado para caret).
+- draw_text(surface, text, font, color, pos, center=False): helper grafico.
+- draw_tabs(surface, state): abas da demo (na pratica, painel fica sempre na aba ANOTACOES).
+
+Estado e CRUD de notas
+- reset_form(state): zera formulario, cursores, estilos e selecao.
+- ensure_filtered(state): atualiza lista filtrada de notas a partir do termo de busca.
+- insert_text(state, field, text): insere texto no campo focado (inclui corpo com estilos por caractere).
+- ingest_incoming_note(payload): adiciona nota externa (ex.: enviada do painel principal) sem abrir formulario.
+- add_note(state): cria ou atualiza nota conforme selecao atual e devolve indice.
+- remove_note(state): apaga nota selecionada e reseta formulario.
+
+Estilizacao e toolbar
+- toolbar_action(state, action): alterna negrito/italico/sublinhado, insere marcadores ou numeracao, altera alinhamento do corpo.
+- get_font_for_style(style): devolve fonte cacheada conforme flags de estilo (bold/italic/underline).
+- draw_toolbar(surface, rect, state): desenha botoes de estilo e retorna rects para clique.
+
+Renderizacao
+- draw_text_input(surface, rect, label, value, focus, key, state, multiline=False, max_lines=3): campo de texto com caret e rotulo.
+- draw_notes_panel(surface, state): renderiza painel completo (busca, lista, toolbar, formulario, corpo com scroll e alinhamento).
+
+Eventos
+- handle_mouse(pos, rects, state): trata cliques em toolbar, botoes, campos, lista e seleciona/edita notas.
+- handle_mousewheel(delta_y, rects, state, pos=None): scroll do corpo da nota.
+- handle_key(event, state): edicao por teclado em busca/titulo/assunto/corpo (inclui numeracao sequencial ao Enter).
+- handle_text_input(event, state): insere texto em campos conforme foco.
+
+Demo
+- main(): executa painel de anotacoes isolado.
