@@ -139,7 +139,7 @@ def compute_defense_snapshot(attrs, hab_state=None):
     bloqueio_trained = bool(trained.get("BLOQUEIO"))
     contra_trained = bool(trained.get("CONTRA"))
 
-    esquiva_val = base + get_attr("AGI") + (2 if esquiva_trained else 0) if esquiva_trained else None
+    esquiva_val = get_attr("AGI") + (2 if esquiva_trained else 0) if esquiva_trained else None
     bloqueio_val = get_attr("FOR") + 1 + armor_bonus if bloqueio_trained else None
     contra_val = get_attr("FOR") + (2 if contra_trained else 0) if contra_trained else None
 
@@ -246,6 +246,51 @@ def draw_badge(surface, rect, title, value, color_bg=GRAY_20, color_border=WHITE
     value_rect = value_render.get_rect()
     value_rect.midright = (rect.right - 6, rect.centery + 2)
     surface.blit(value_render, value_rect)
+
+
+def draw_quick_guide_table(surface, rect):
+    pygame.draw.rect(surface, BLACK, rect)
+    pygame.draw.rect(surface, WHITE, rect, 1)
+    draw_text(surface, "GUIA RAPIDO - DEFESAS", FONTS["sm_b"], WHITE, (rect.x + 6, rect.y + 4))
+
+    pad = 6
+    table_x = rect.x + pad
+    table_y = rect.y + 24
+    table_w = rect.width - pad * 2
+    header_h = 20
+    row_h = 20
+    col_gap = 6
+    col1_w = 110
+    col2_w = 200
+    col3_w = max(80, table_w - col1_w - col2_w - col_gap * 2)
+
+    header_rect = pygame.Rect(table_x, table_y, table_w, header_h)
+    pygame.draw.rect(surface, GRAY_40, header_rect)
+    pygame.draw.rect(surface, WHITE, header_rect, 1)
+    draw_text(surface, "DEFESA", FONTS["xs"], WHITE, (table_x + 4, table_y + 3))
+    draw_text(surface, "BASE", FONTS["xs"], WHITE, (table_x + col1_w + col_gap + 4, table_y + 3))
+    draw_text(surface, "OBS", FONTS["xs"], WHITE, (table_x + col1_w + col_gap + col2_w + col_gap + 4, table_y + 3))
+
+    rows = [
+        ("Esquiva", "AGI + treino", "Bonus de pericia se treinado."),
+        ("Bloqueio", "FOR + treino", "Reduz severidade."),
+        ("Contra-ataque", "Troca ofensiva", "--"),
+    ]
+
+    for idx, (label, quando, como) in enumerate(rows):
+        y = table_y + header_h + idx * row_h
+        row_rect = pygame.Rect(table_x, y, table_w, row_h)
+        pygame.draw.rect(surface, GRAY_20 if idx % 2 == 0 else GRAY_40, row_rect)
+        pygame.draw.rect(surface, WHITE, row_rect, 1)
+        draw_text(surface, label, FONTS["xs"], WHITE, (table_x + 4, y + 3))
+        draw_text(surface, quando, FONTS["xs"], GRAY_80, (table_x + col1_w + col_gap + 4, y + 3))
+        draw_text(
+            surface,
+            como,
+            FONTS["xs"],
+            GRAY_80,
+            (table_x + col1_w + col_gap + col2_w + col_gap + 4, y + 3),
+        )
 
 
 def draw_geral_panel(surface, state):
@@ -446,20 +491,13 @@ def draw_geral_panel(surface, state):
     draw_badge(surface, vida_rect, "VIDA", vida, color_bg=GRAY_20, color_border=WHITE, value_color=GREEN)
     draw_badge(surface, san_rect, "SANIDADE", sanidade, color_bg=GRAY_20, color_border=WHITE, value_color=ORANGE)
 
-    roll_rect = pygame.Rect(status_rect.x + 12, vida_rect.bottom + 10, status_rect.width - 24, status_rect.bottom - (vida_rect.bottom + 16))
-    #pygame.draw.rect(surface, BLACK, roll_rect)
-    #pygame.draw.rect(surface, WHITE, roll_rect, 1)
-    #roll_summary = state.get("roll", {}).get("summary", "")
-    #roll_lines = wrap_text(roll_summary, FONTS["xs"], roll_rect.width - 12)
-    #for i, line in enumerate(roll_lines[:4]):
-    #    color = ORANGE if i == 0 else GRAY_80
-    #    draw_text(surface, line, FONTS["xs"], color, (roll_rect.x + 6, roll_rect.y + 4 + i * 16))
-    #roll_detail = state.get("roll", {}).get("detail", "")
-    #if roll_detail:
-    #    detail_lines = wrap_text(roll_detail, FONTS["xs"], roll_rect.width - 12)
-    #    base_y = roll_rect.y + 4 + len(roll_lines[:4]) * 16 + 2
-    #    for j, line in enumerate(detail_lines[:3]):
-    #        draw_text(surface, line, FONTS["xs"], GRAY_60, (roll_rect.x + 6, base_y + j * 16))
+    guide_rect = pygame.Rect(
+        status_rect.x + 12,
+        vida_rect.bottom + 10,
+        status_rect.width - 24,
+        status_rect.bottom - (vida_rect.bottom + 16),
+    )
+    draw_quick_guide_table(surface, guide_rect)
 
     return rects
 

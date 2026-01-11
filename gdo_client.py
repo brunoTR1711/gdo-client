@@ -87,11 +87,11 @@ FONTS = {
 
 # Estado dos atributos (valor e retângulos dos botões serão preenchidos a cada draw)
 ATTRIBUTES = [
-    {"code": "VIG", "name": "Vigor", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "FOR", "name": "Força", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "AGI", "name": "Agilidade", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "INT", "name": "Intelecto", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
-    {"code": "PRE", "name": "Presença", "value": 1, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "VIG", "name": "Vigor", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "FOR", "name": "Força", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "AGI", "name": "Agilidade", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "INT", "name": "Intelecto", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
+    {"code": "PRE", "name": "Presença", "value": 0, "minus_rect": None, "plus_rect": None, "value_rect": None},
 ]
 
 
@@ -278,7 +278,7 @@ EMBED_STATE = {
 }
 
 SIDE_PANEL_STATE = {
-    "tabs": ["GERAL", "INVENTARIO", "HABILIDADES", "ANOTACOES"],
+    "tabs": ["GERAL", "INVENTARIO", "HABILIDADES", "ANOTACOES", "MESA"],
     "active_tab": "GERAL",
     "tab_rects": [],
     "embed_rect": None,
@@ -815,8 +815,8 @@ def roll_summary(entry):
     if roll_type == "bloqueio":
         br = entry.get("block_result") or {}
         if not br.get("permitido"):
-            msg = br.get("mensagem_principal") or "Bloqueio não realizado"
-            return f"{label}: {msg}"
+            msg = br.get("mensagem_principal") or "Bloqueio nao realizado"
+            return f"{label}: ({msg}) = --"
         mods = [f"FOR({entry.get('attr_value', 0):+})", "Treino(+1)"]
         bonus_arm = br.get("bonus_armadura", 0)
         if bonus_arm:
@@ -824,21 +824,8 @@ def roll_summary(entry):
         pen_estado = br.get("penalidade_estado", 0)
         if pen_estado:
             mods.append(f"Estado({pen_estado:+})")
-        summary = f"{label}: 3D6({dice_str}) + {' + '.join(mods)} = {total}"
-        sev_inicial = br.get("severidade_inicial")
-        sev_final = br.get("severidade_final")
-        if br.get("severidade_definida") and sev_inicial is not None and sev_final is not None:
-            summary += f" | Severidade {sev_inicial}->{sev_final}"
-            if br.get("dano_anulado"):
-                summary += " (dano anulado)"
-        else:
-            summary += " | Severidade não informada"
-        extra_red = br.get("reducao_severidade", 0)
-        if extra_red:
-            summary += f" | Armadura reduz severidade em {extra_red}"
-        if br.get("critico"):
-            summary += " | Falha crítica"
-        return summary
+        soma = f"3D6({dice_str}) + {' + '.join(mods)}"
+        return f"{label}: ({soma}) = {total}"
     if roll_type in ("attribute", "skill"):
         parts = [
             f"3D6({dice_str})",
@@ -849,13 +836,12 @@ def roll_summary(entry):
                 parts.append(f"Treino({entry['skill_bonus']:+})")
             else:
                 parts.append("Sem treino")
-        return f"{label}: {' + '.join(parts)} = {total}"
+        return f"{label}: ({' + '.join(parts)}) = {total}"
     elif roll_type == "damage":
         expr = entry.get("damage_expr", "Dano")
-        return f"{label}: {expr}({dice_str}) = {total}"
+        return f"{label}: ({expr}({dice_str})) = {total}"
     else:
-        return f"{label}: {dice_str} = {total}"
-
+        return f"{label}: ({dice_str}) = {total}"
 
 def start_roll(entry):
     """Inicia animação de rolagem e agenda aplicação do resultado."""
@@ -938,6 +924,51 @@ def draw_pips(surface, x, y, count, size=10, danger_index=None):
             elif i == danger_index - 1:
                 color = ORANGE  # laranja
         pygame.draw.rect(surface, color, (x + i * (size + 4), y, size, size))
+
+
+def draw_history_summary(surface, summary, rect, y, font, result_font):
+    max_width = rect.width - 16
+    if " = " not in summary:
+        lines, _ = wrap_text(summary, font, max_width)
+        for line in lines:
+            if y + font.get_height() > rect.bottom - 6:
+                return y
+            draw_text(surface, line, font, WHITE, (rect.x + 8, y))
+            y += font.get_height()
+        return y
+
+    left, right = summary.rsplit(" = ", 1)
+    left_text = f"{left} ="
+    lines, _ = wrap_text(left_text, font, max_width)
+    if not lines:
+        lines = [left_text]
+
+    for line in lines[:-1]:
+        if y + font.get_height() > rect.bottom - 6:
+            return y
+        draw_text(surface, line, font, WHITE, (rect.x + 8, y))
+        y += font.get_height()
+
+    line = lines[-1]
+    max_line_h = max(font.get_height(), result_font.get_height())
+    if y + max_line_h > rect.bottom - 6:
+        return y
+    draw_text(surface, line, font, WHITE, (rect.x + 8, y))
+    left_w = font.size(line)[0]
+    gap = 6
+    right_w = result_font.size(right)[0]
+    if left_w + gap + right_w <= max_width:
+        y_offset = (font.get_height() - result_font.get_height()) // 2
+        draw_text(surface, right, result_font, WHITE, (rect.x + 8 + left_w + gap, y + y_offset))
+        y += max_line_h
+        return y
+
+    y += font.get_height()
+    if y + result_font.get_height() > rect.bottom - 6:
+        return y
+    draw_text(surface, right, result_font, WHITE, (rect.x + 8, y))
+    y += result_font.get_height()
+    return y
 
 
 def get_attr_value(code):
@@ -1057,7 +1088,7 @@ def life_status():
       Falhas: 1 vermelho escuro, 2 vermelho médio, 3 vermelho vivo
       Empate/sem marcas: preto
     """
-    steps = [("SAUDÁVEL", (0, 180, 0)), ("MÉDIO", ORANGE), ("GRAVE", RED), ("MORRENDO", BLACK)]
+    steps = [("SAUDÁVEL", (0, 180, 0)), ("FERIDO", ORANGE), ("MACHUCADO", RED), ("MORRENDO", BLACK)]
     level = 0
     if LIFE_MARKS["LEVE"] and all(LIFE_MARKS["LEVE"]):
         level = 1
@@ -1257,7 +1288,7 @@ def draw_vitals_panel(surface):
     max_width = box_size + (max_boxes - 1) * box_step
     box_x = life_rect.right - 12 - max_width
     current_y = start_y
-    label_map = {"LEVE": "LEVE", "FERIDO": "MÉDIO", "MACHUCADO": "GRAVE", "MORRENDO": "MORRENDO"}
+    label_map = {"LEVE": "SAUDÁVEL", "FERIDO": "FERIDO", "MACHUCADO": "MACHUCADO", "MORRENDO": "MORRENDO"}
     for key in LIFE_TRACKS:
         label = label_map.get(key, key).title()
         label_rect = draw_text(surface, label, FONTS["xs"], WHITE, (label_x, current_y))
@@ -1552,6 +1583,8 @@ def draw_inventory_panel(surface):
         scaled = pygame.transform.smoothscale(EMBED_STATE["inv_surf"], content_rect.size)
         surface.blit(scaled, content_rect)
         SIDE_PANEL_STATE["embed_rect"] = content_rect.copy()
+    elif active_tab == "MESA":
+        draw_text(surface, "Mesa em construcao", FONTS["md"], WHITE, content_rect.center, center=True)
     else:
         msg = "Painel GERAL em construcao" if active_tab == "GERAL" else "Inventario em construcao"
         draw_text(surface, msg, FONTS["md"], WHITE, content_rect.center, center=True)
@@ -1709,6 +1742,7 @@ def draw_dice_panel(surface):
     pygame.draw.rect(surface, GRAY_30, history_rect)
     pygame.draw.rect(surface, WHITE, history_rect, 1)
     history_font = FONTS["md"]
+    history_result_font = FONTS["md+"]
     entries = []
     if DICE_STATE["current"]:
         entries.append(DICE_STATE["current"])
@@ -1721,12 +1755,7 @@ def draw_dice_panel(surface):
     else:
         for entry in entries:
             summary = roll_summary(entry)
-            lines, _ = wrap_text(summary, history_font, history_rect.width - 16)
-            for line in lines:
-                if hy + history_font.get_height() > history_rect.bottom - 6:
-                    break
-                draw_text(surface, line, history_font, WHITE, (history_rect.x + 8, hy))
-                hy += history_font.get_height()
+            hy = draw_history_summary(surface, summary, history_rect, hy, history_font, history_result_font)
             hy += 6
 
 
@@ -1853,7 +1882,7 @@ def main():
 
     # Estado simples dos atributos
     for attr in ATTRIBUTES:
-        attr["value"] = 1
+        attr["value"] = 0
     EFFORT_STATE["manual_total"] = False
     EFFORT_STATE["total"] = EFFORT_BASE + calc_effort_cap(get_attr_value("INT"))
     EFFORT_STATE["current"] = EFFORT_STATE["total"]

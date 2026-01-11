@@ -126,13 +126,15 @@ HABILIDADES_STATE = {
     "focus": None,
     "error": "",
     "show_form": False,
-    "cursor": {"name": 0, "resumo": 0, "descricao": 0, "resist_text": 0, "prof_text": 0},
+    "cursor": {"name": 0, "resumo": 0, "descricao": 0, "resist_text": 0},
     "attrs": {"AGI": 0, "FOR": 0, "VIG": 0},
     "armor_bonus": 0,  # bônus da armadura aplicado ao Bloqueio
     "armor_block_reduction": 0,
     "skills_trained": {"ESQUIVA": False, "BLOQUEIO": False, "CONTRA": False},
     "resist_text": "",
-    "prof_text": "",
+    "prof_armas": "",
+    "prof_protecoes": "",
+    "prof_outros": "",
 }
 
 FIELD_OPTIONS = {
@@ -142,8 +144,17 @@ FIELD_OPTIONS = {
     "dano": ["---", "1D4", "1D6", "1D8", "1D10", "1D12", "1D20"],
 }
 
+PROF_OPTIONS = {
+    "prof_armas": ["---", "Simples", "Táticas", "Pesadas"],
+    "prof_protecoes": ["---", "Leves", "Pesadas", "Escudo"],
+    "prof_outros": ["---", "Ferramentas de concerto", "Ferramentas de artesão", "Instrumentos musicais"],
+}
+
+ALL_DROPDOWN_OPTIONS = {**FIELD_OPTIONS, **PROF_OPTIONS}
+
 TEXT_FIELDS = {"name", "resumo", "descricao"}
-TOP_TEXT_FIELDS = {"resist_text", "prof_text"}
+TOP_TEXT_FIELDS = {"resist_text"}
+TOP_DROPDOWN_FIELDS = set(PROF_OPTIONS.keys())
 
 DEF_CONFIG = [
     {"key": "ESQUIVA", "label": "ESQUIVA", "attr": "AGI"},
@@ -167,12 +178,11 @@ def compute_defense_value(state, key, attr_key):
         return attr_val + train_bonus + armor_bonus, attr_val, train_bonus, armor_bonus
     train_bonus = 2 if trained else 0
     if key == "CONTRA":
-        parts = []
+        parts = [f"{attr_key}({attr_val:+})"]
         if train_bonus:
-            parts.append("")
+            parts.append(f"Treino({train_bonus:+})")
         return " + ".join(parts), attr_val, train_bonus, 0
-    base = compute_base_defense(state)
-    return base + attr_val + train_bonus, attr_val, train_bonus, 0
+    return attr_val + train_bonus, attr_val, train_bonus, 0
 
 
 def draw_text(surface, text, font, color, pos, center=False):
@@ -336,18 +346,21 @@ def draw_habilidades_panel(surface, state):
             mod_total = attr_val + train_bonus
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
         elif cfg["key"] == "BLOQUEIO":
-            formula = ""
+            formula_parts = [f"{cfg['attr']}({attr_val:+})"]
+            if train_bonus:
+                formula_parts.append(f"Treino({train_bonus:+})")
             if armor_bonus:
-                formula += f" + Arm({armor_bonus:+})"
+                formula_parts.append(f"Arm({armor_bonus:+})")
+            formula = " + ".join(formula_parts)
             if armor_reduction:
-                formula += f" / -{armor_reduction} severidade"
+                formula = f"{formula} / -{armor_reduction} severidade"
             draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             mod_total = attr_val + train_bonus + armor_bonus
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{mod_total:+}")
         else:
-            formula_parts = []
+            formula_parts = [f"{cfg['attr']}({attr_val:+})"]
             if train_bonus:
-                formula_parts.append(f"Treino {train_bonus:+}")
+                formula_parts.append(f"Treino({train_bonus:+})")
             formula = " + ".join(formula_parts)
             draw_text(surface, formula, FONTS["sm"], WHITE, (formula_x, y))
             draw_diamond(surface, (diamond_x, y + cb_size // 2 + 2), 22, f"{val:02d}")
@@ -367,25 +380,34 @@ def draw_habilidades_panel(surface, state):
         caret_y = resist_rect.y + 3
         if (pygame.time.get_ticks() // 400) % 2 == 0:
             pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, resist_rect.bottom - 3), 1)
-    draw_text(surface, "PROFICIENCIAS", FONTS["md"], WHITE, (right_x, resist_rect.bottom + 8))
-    prof_rect = pygame.Rect(right_x, resist_rect.bottom + 30, right_w, 24)
-    border_prof = ORANGE if state.get("focus") == "prof_text" else WHITE
-    pygame.draw.rect(surface, GRAY_20, prof_rect)
-    pygame.draw.rect(surface, border_prof, prof_rect, 1)
-    prof_val = state.get("prof_text", "")
-    draw_text(surface, prof_val, FONTS["sm"], WHITE, (prof_rect.x + 6, prof_rect.y + 4))
-    if state.get("focus") == "prof_text":
-        cur = state["cursor"].get("prof_text", len(prof_val))
-        cur = max(0, min(cur, len(prof_val)))
-        caret_x = prof_rect.x + 6 + FONTS["sm"].size(prof_val[:cur])[0]
-        caret_y = prof_rect.y + 3
-        if (pygame.time.get_ticks() // 400) % 2 == 0:
-            pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, prof_rect.bottom - 3), 1)
     rects["fields"]["resist_text"] = resist_rect
-    rects["fields"]["prof_text"] = prof_rect
+
+    draw_text(surface, "PROFICIENCIAS", FONTS["md"], WHITE, (right_x, resist_rect.bottom + 8))
+
+    # Dropdowns de proficiencia (armas/protecoes/outros)
+    select_gap = 8
+    select_w = (right_w - select_gap * 2) // 3
+    select_h = 24
+    select_y = resist_rect.bottom + 32
+    select_bottom = select_y
+    prof_selects = [
+        ("ARMAS", "prof_armas"),
+        ("PROTECOES", "prof_protecoes"),
+        ("OUTROS", "prof_outros"),
+    ]
+    for i, (label, key) in enumerate(prof_selects):
+        rect = pygame.Rect(right_x + i * (select_w + select_gap), select_y, select_w, select_h)
+        border = ORANGE if state.get("focus") == key else WHITE
+        pygame.draw.rect(surface, GRAY_20, rect)
+        pygame.draw.rect(surface, border, rect, 1)
+        draw_text(surface, label, FONTS["xs"], WHITE, (rect.x, rect.y - 14))
+        current = state.get(key, "") or "---"
+        draw_text(surface, current, FONTS["sm"], WHITE, (rect.x + 6, rect.y + 4))
+        rects["fields"][key] = rect
+        select_bottom = max(select_bottom, rect.bottom)
 
     # Filters
-    filter_y = content_y + top_block_h - 20
+    filter_y = max(content_y + top_block_h - 20, select_bottom + 12)
     filters = ["COMBATE", "NARRATIVA", "MAGIKA"]
     filter_w = 110
     filter_gap = 10
@@ -529,7 +551,10 @@ def draw_habilidades_panel(surface, state):
                 pygame.draw.line(surface, WHITE, (caret_x, caret_y), (caret_x, caret_y + FONTS["sm"].get_height()), 1)
         rect_fields["descricao"] = desc_rect
     else:
-        state["dropdown"] = None
+        dropdown = state.get("dropdown")
+        # Manter dropdowns do topo (proficiencias) mesmo com o form fechado
+        if not (dropdown and dropdown.get("field") in TOP_DROPDOWN_FIELDS):
+            state["dropdown"] = None
         placeholder = "Clique em ADICIONAR ou selecione uma habilidade"
         draw_text(surface, placeholder, FONTS["sm"], WHITE, form_area.center, center=True)
 
@@ -574,10 +599,12 @@ def draw_habilidades_panel(surface, state):
 
     # Dropdown (draw last, above all)
     dropdown = state.get("dropdown")
-    if dropdown and dropdown.get("field") in FIELD_OPTIONS and show_form:
-        base_rect = rects["fields"].get(dropdown["field"])
-        options = FIELD_OPTIONS.get(dropdown["field"], [])
-        if base_rect and options:
+    if dropdown:
+        field = dropdown.get("field")
+        base_rect = rects["fields"].get(field)
+        options = ALL_DROPDOWN_OPTIONS.get(field, [])
+        allow_dropdown = show_form or field in TOP_DROPDOWN_FIELDS
+        if base_rect and options and allow_dropdown:
             opt_h = 22
             opt_pad = 3
             opt_rects = []
@@ -604,6 +631,8 @@ def handle_mouse(pos, rects, state):
                 field = dropdown.get("field")
                 if field in state["form"]:
                     state["form"][field] = opt
+                else:
+                    state[field] = opt
                 state["dropdown"] = None
                 state["focus"] = None
                 return
@@ -624,7 +653,7 @@ def handle_mouse(pos, rects, state):
     # Fields
     for key, rect in rects.get("fields", {}).items():
         if rect and rect.collidepoint(pos):
-            if key in FIELD_OPTIONS:
+            if key in ALL_DROPDOWN_OPTIONS:
                 state["dropdown"] = {"field": key, "rects": []}
             else:
                 state["dropdown"] = None
@@ -674,7 +703,7 @@ def handle_key(event, state):
     field = state.get("focus")
     if not field:
         return
-    if field in FIELD_OPTIONS:
+    if field in ALL_DROPDOWN_OPTIONS:
         return
 
     # Determine storage and guard on visibility
